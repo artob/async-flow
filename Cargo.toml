@@ -1,0 +1,25 @@
+# See: https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package]
+name = "async-flow"
+version = "0.0.0"
+authors = ["Arto Bendiken"]
+edition = "2024"
+#rust-version = "1.85"
+description = "Async flow traits."
+#documentation = "https://docs.rs/async-flow"
+readme = true
+homepage = "https://github.com/dryrust/async-flow"
+repository = "https://github.com/dryrust/async-flow"
+license = "Unlicense"
+keywords = []
+categories = []
+publish = true
+
+[features]
+default = ["all", "std"]
+all = []
+std = []
+unstable = []
+
+[dependencies]
