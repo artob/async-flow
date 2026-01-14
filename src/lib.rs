@@ -6,6 +6,8 @@
 #![forbid(unsafe_code)]
 #![allow(unused)]
 
+extern crate alloc;
+
 #[doc = include_str!("../README.md")]
 #[cfg(doctest)]
 pub struct ReadmeDoctests;

@@ -1,28 +1,9 @@
 // This is free and unencumbered software released into the public domain.
 
-use tokio::sync::mpsc::Receiver;
+use crate::Port;
+use alloc::boxed::Box;
 
-#[derive(Debug)]
-pub struct InputPort<T> {
-    pub(crate) receiver: Receiver<T>,
-}
-
-impl<T> InputPort<T> {
-    pub fn as_receiver(&self) -> &Receiver<T> {
-        &self.receiver
-    }
-
-    pub fn as_receiver_mut(&mut self) -> &mut Receiver<T> {
-        &mut self.receiver
-    }
-
-    pub async fn recv(&mut self) -> Option<T> {
-        self.receiver.recv().await
-    }
-}
-
-impl<T> From<Receiver<T>> for InputPort<T> {
-    fn from(input: Receiver<T>) -> Self {
-        Self { receiver: input }
-    }
+#[async_trait::async_trait]
+pub trait InputPort<T>: Port<T> {
+    async fn recv(&mut self) -> Option<T>;
 }

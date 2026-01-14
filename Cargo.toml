@@ -18,11 +18,13 @@ publish = true
 
 [features]
 default = ["all", "std"]
-all = []
-std = []
+all = ["stream"]
+std = ["dogma/std"]
 unstable = []
+stream = ["dep:tokio-stream"]
 
 [dependencies]
+async-trait = { version = "0.1", default-features = false }
 dogma = { version = "0.1", default-features = false, features = ["traits"] }
 tokio = { version = "1.49", default-features = false, features = ["rt", "sync", "macros"] }
-tokio-stream = { version = "0.1", default-features = false }
+tokio-stream = { version = "0.1", default-features = false, optional = true }
