@@ -35,8 +35,8 @@ impl<T> Output<T> {
         Some(self.sender.max_capacity())
     }
 
-    pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
-        self.sender.send(value).await
+    pub async fn send(&self, value: T) -> Result<(), SendError> {
+        Ok(self.sender.send(value).await?)
     }
 }
 
@@ -68,7 +68,7 @@ impl<T> From<&Sender<T>> for Output<T> {
 
 #[async_trait::async_trait]
 impl<T: Send + 'static> crate::io::OutputPort<T> for Output<T> {
-    async fn send(&self, value: T) -> Result<(), SendError<T>> {
+    async fn send(&self, value: T) -> Result<(), SendError> {
         self.send(value).await
     }
 }

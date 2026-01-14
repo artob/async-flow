@@ -19,7 +19,7 @@ publish = true
 [features]
 default = ["all", "std"]
 all = ["stream", "tokio"]
-std = ["dogma/std"]
+std = ["dogma/std", "tokio?/io-std", "tokio?/io-util"]
 unstable = []
 stream = ["dep:tokio-stream"]
 tokio = ["dep:tokio"]
@@ -28,5 +28,5 @@ tokio = ["dep:tokio"]
 async-trait = { version = "0.1", default-features = false }
 dogma = { version = "0.1", default-features = false, features = ["traits"] }
 thiserror = { version = "2", default-features = false }
-tokio = { version = "1.49", default-features = false, features = ["rt", "sync", "macros"], optional = true }
+tokio = { version = "1.49", default-features = false, features = ["macros", "rt", "sync"], optional = true }
 tokio-stream = { version = "0.1", default-features = false, optional = true }
