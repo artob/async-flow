@@ -31,20 +31,24 @@ impl System {
         self.blocks.join_all().await;
     }
 
-    pub fn stdin<T: FromStr>(&mut self, output: Output<T>)
+    pub fn stdin<T: FromStr>(&mut self) -> Input<T>
     where
         T: Send + 'static,
         <T as FromStr>::Err: Send,
     {
+        let (output, input) = super::bounded(1);
         let block = crate::stdio::stdin(output);
         self.blocks.spawn(block);
+        input
     }
 
-    pub fn stdout<T: ToString>(&mut self, input: Input<T>)
+    pub fn stdout<T: ToString>(&mut self) -> Output<T>
     where
         T: Send + 'static,
     {
+        let (output, input) = super::bounded(1);
         let block = crate::stdio::stdout(input);
         self.blocks.spawn(block);
+        output
     }
 }

@@ -8,20 +8,17 @@ use async_flow::{
 /// cargo run --example sqrt
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let (input, sqrt_in) = async_flow::tokio::bounded(1);
-    let (sqrt_out, output) = async_flow::tokio::bounded(1);
-
     let mut system = System::new();
-    let _ = system.stdin::<f64>(input);
+    let sqrt_in = system.stdin::<f64>();
+    let sqrt_out = system.stdout::<f64>();
     system.spawn(sqrt(sqrt_in, sqrt_out));
-    let _ = system.stdout::<f64>(output);
-
     system.execute().await
 }
 
-async fn sqrt(mut input: Input<f64>, output: Output<f64>) -> Result {
-    while let Some(value) = input.recv().await? {
-        output.send(value.sqrt()).await?;
+async fn sqrt(mut inputs: Input<f64>, outputs: Output<f64>) -> Result {
+    while let Some(input) = inputs.recv().await? {
+        let output = input.sqrt();
+        outputs.send(output).await?;
     }
     Ok(())
 }
