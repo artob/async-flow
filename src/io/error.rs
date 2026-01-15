@@ -1,6 +1,7 @@
 // This is free and unencumbered software released into the public domain.
 
 use super::{RecvError, SendError, TryRecvError, TrySendError};
+use alloc::boxed::Box;
 use thiserror::Error;
 
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;
@@ -22,4 +23,7 @@ pub enum Error {
     #[cfg(feature = "std")]
     #[error("{0}")]
     Stdio(#[from] std::io::Error),
+
+    #[error("{0}")]
+    Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }

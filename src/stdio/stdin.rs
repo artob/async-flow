@@ -1,11 +1,12 @@
 // This is free and unencumbered software released into the public domain.
 
-use crate::io::Result;
+use crate::io::{Error, Result};
 use alloc::string::String;
 use core::str::FromStr;
 
 #[cfg(feature = "tokio")]
 pub async fn stdin<T: FromStr>(outputs: crate::tokio::Outputs<T>) -> Result {
+    use std::io::ErrorKind;
     use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 
     let input = tokio::io::stdin();
@@ -13,9 +14,10 @@ pub async fn stdin<T: FromStr>(outputs: crate::tokio::Outputs<T>) -> Result {
     let mut lines = reader.lines();
 
     while let Some(line) = lines.next_line().await? {
-        if let Ok(value) = line.parse() {
-            outputs.send(value).await?;
-        }
+        let output = line
+            .parse()
+            .map_err(|_| Error::Stdio(ErrorKind::InvalidInput.into()))?;
+        outputs.send(output).await?;
     }
 
     Ok(())
