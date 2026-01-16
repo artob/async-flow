@@ -6,7 +6,7 @@ use core::str::FromStr;
 
 pub async fn stdin<T: FromStr>(outputs: Outputs<T>) -> Result {
     use std::io::ErrorKind;
-    use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
+    use tokio::io::{AsyncBufReadExt, BufReader};
 
     let input = tokio::io::stdin();
     let reader = BufReader::new(input);

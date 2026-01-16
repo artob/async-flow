@@ -16,10 +16,6 @@ impl<T> core::fmt::Debug for Inputs<T> {
 }
 
 impl<T> Inputs<T> {
-    pub(crate) fn into_receiver(self) -> Receiver<T> {
-        self.rx
-    }
-
     pub fn capacity(&self) -> Option<usize> {
         Some(self.rx.capacity())
     }

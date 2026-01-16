@@ -17,10 +17,6 @@ impl<T> core::fmt::Debug for Outputs<T> {
 }
 
 impl<T> Outputs<T> {
-    pub(crate) fn into_sender(self) -> Sender<T> {
-        self.tx.unwrap()
-    }
-
     pub fn capacity(&self) -> Option<usize> {
         self.tx.as_ref().map(|tx| tx.capacity())
     }

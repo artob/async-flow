@@ -2,7 +2,7 @@
 
 use super::Inputs;
 use crate::io::Result;
-use alloc::string::{String, ToString};
+use alloc::string::ToString;
 
 pub async fn stderr<T: ToString>(mut inputs: Inputs<T>) -> Result {
     use tokio::io::AsyncWriteExt;

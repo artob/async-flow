@@ -8,7 +8,7 @@ pub struct RecvError;
 
 #[cfg(feature = "flume")]
 impl From<flume::RecvError> for RecvError {
-    fn from(input: flume::RecvError) -> Self {
+    fn from(_input: flume::RecvError) -> Self {
         Self // TODO
     }
 }
@@ -19,14 +19,14 @@ pub struct TryRecvError;
 
 #[cfg(feature = "flume")]
 impl From<flume::TryRecvError> for TryRecvError {
-    fn from(input: flume::TryRecvError) -> Self {
+    fn from(_input: flume::TryRecvError) -> Self {
         Self // TODO
     }
 }
 
 #[cfg(feature = "tokio")]
 impl From<tokio::sync::mpsc::error::TryRecvError> for TryRecvError {
-    fn from(input: tokio::sync::mpsc::error::TryRecvError) -> Self {
+    fn from(_input: tokio::sync::mpsc::error::TryRecvError) -> Self {
         Self // TODO
     }
 }

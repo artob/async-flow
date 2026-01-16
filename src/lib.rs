@@ -4,7 +4,7 @@
 
 #![no_std]
 #![forbid(unsafe_code)]
-#![allow(unused)]
+//#![allow(unused)]
 
 extern crate alloc;
 

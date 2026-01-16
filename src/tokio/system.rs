@@ -4,10 +4,7 @@ use crate::{
     io::Result,
     tokio::{Inputs, Outputs},
 };
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::string::ToString;
 use core::str::FromStr;
 use tokio::task::{AbortHandle, JoinSet};
 
