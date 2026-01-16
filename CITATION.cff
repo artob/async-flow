@@ -11,10 +11,10 @@ authors:
     alias: artob
     website: https://ar.to
     orcid:  https://orcid.org/0009-0002-0725-4874
-repository-code: https://github.com/dryrust/async-flow
-url: https://github.com/dryrust/async-flow
+repository-code: https://github.com/artob/async-flow
+url: https://async-flow.rs
 abstract: >-
-  Async abstractions for flow-based programming (FBP).
+  Async abstractions for flow-based programming (FBP) in Rust.
 keywords:
   - fbp
   - flow

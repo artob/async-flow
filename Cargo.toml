@@ -9,11 +9,11 @@ edition = "2024"
 description = "Async abstractions for flow-based programming (FBP)."
 #documentation = "https://docs.rs/async-flow"
 readme = true
-homepage = "https://github.com/dryrust/async-flow"
-repository = "https://github.com/dryrust/async-flow"
+homepage = "https://async-flow.rs"
+repository = "https://github.com/artob/async-flow"
 license = "Unlicense"
 keywords = ["fbp", "flow", "dataflow", "async"]
-categories = []
+categories = ["asynchronous", "concurrency", "rust-patterns", "no-std"]
 publish = true
 
 [features]

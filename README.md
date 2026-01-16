@@ -19,7 +19,7 @@ interconnected blocks that process arbitrary messages.
 [[Installation](#%EF%B8%8F-installation)] |
 [[Examples](#-examples)] |
 [[Reference](#-reference)] |
-[[Development](#-development)]
+[[Development](#%E2%80%8D-development)]
 
 ## ✨ Features
 
@@ -109,18 +109,18 @@ async fn add_ints(mut lhs: Inputs<i64>, mut rhs: Inputs<i64>, sums: Outputs<i64>
 ## 👨‍💻 Development
 
 ```bash
-git clone https://github.com/dryrust/async-flow.git
+git clone https://github.com/artob/async-flow.git
 ```
 
 ---
 
-[![Share on X](https://img.shields.io/badge/share%20on-x-03A9F4?logo=x)](https://x.com/intent/post?url=https://github.com/dryrust/async-flow&text=Async-Flow)
-[![Share on Reddit](https://img.shields.io/badge/share%20on-reddit-red?logo=reddit)](https://reddit.com/submit?url=https://github.com/dryrust/async-flow&title=Async-Flow)
-[![Share on Hacker News](https://img.shields.io/badge/share%20on-hn-orange?logo=ycombinator)](https://news.ycombinator.com/submitlink?u=https://github.com/dryrust/async-flow&t=Async-Flow)
-[![Share on Facebook](https://img.shields.io/badge/share%20on-fb-1976D2?logo=facebook)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/dryrust/async-flow)
-[![Share on LinkedIn](https://img.shields.io/badge/share%20on-linkedin-3949AB?logo=linkedin)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/dryrust/async-flow)
+[![Share on X](https://img.shields.io/badge/share%20on-x-03A9F4?logo=x)](https://x.com/intent/post?url=https://github.com/artob/async-flow&text=Async-Flow)
+[![Share on Reddit](https://img.shields.io/badge/share%20on-reddit-red?logo=reddit)](https://reddit.com/submit?url=https://github.com/artob/async-flow&title=Async-Flow)
+[![Share on Hacker News](https://img.shields.io/badge/share%20on-hn-orange?logo=ycombinator)](https://news.ycombinator.com/submitlink?u=https://github.com/artob/async-flow&t=Async-Flow)
+[![Share on Facebook](https://img.shields.io/badge/share%20on-fb-1976D2?logo=facebook)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/artob/async-flow)
+[![Share on LinkedIn](https://img.shields.io/badge/share%20on-linkedin-3949AB?logo=linkedin)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/artob/async-flow)
 
-[Flows.rs]: https://crates.io/crates/flows
+[Flows.rs]: https://github.com/artob/flows.rs
 [Tokio]: https://tokio.rs
 [flow-based programming]: https://jpaulm.github.io/fbp/
 [naming conventions]: https://rust-lang.github.io/api-guidelines/naming.html
