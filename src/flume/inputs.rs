@@ -17,10 +17,6 @@ impl<T> core::fmt::Debug for Inputs<T> {
 }
 
 impl<T> Inputs<T> {
-    pub(crate) fn into_receiver(self) -> Receiver<T> {
-        self.rx
-    }
-
     pub fn capacity(&self) -> Option<usize> {
         self.max_capacity().map(|max| max - self.rx.len())
     }
@@ -33,7 +29,6 @@ impl<T> Inputs<T> {
         match self.rx.recv_async().await {
             Ok(value) => Ok(Some(value)),
             Err(flume::RecvError::Disconnected) => Ok(None),
-            Err(_) => unreachable!(),
         }
     }
 }

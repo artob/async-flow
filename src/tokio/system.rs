@@ -4,8 +4,6 @@ use crate::{
     io::Result,
     tokio::{Inputs, Outputs},
 };
-use alloc::string::ToString;
-use core::str::FromStr;
 use tokio::task::{AbortHandle, JoinSet};
 
 pub type Subsystem = System;
@@ -65,23 +63,25 @@ impl System {
         Ok(())
     }
 
-    pub fn stdin<T: FromStr>(&mut self) -> Inputs<T>
+    #[cfg(feature = "std")]
+    pub fn read_stdin<T: core::str::FromStr>(&mut self) -> Inputs<T>
     where
         T: Send + 'static,
-        <T as FromStr>::Err: Send,
+        <T as core::str::FromStr>::Err: Send,
     {
         let (output, input) = super::bounded(1);
-        let block = crate::stdio::stdin(output);
+        let block = super::stdin(output);
         self.blocks.spawn(block);
         input
     }
 
-    pub fn stdout<T: ToString>(&mut self) -> Outputs<T>
+    #[cfg(feature = "std")]
+    pub fn write_stdout<T: alloc::string::ToString>(&mut self) -> Outputs<T>
     where
         T: Send + 'static,
     {
         let (output, input) = super::bounded(1);
-        let block = crate::stdio::stdout(input);
+        let block = super::stdout(input);
         self.blocks.spawn(block);
         output
     }

@@ -6,8 +6,8 @@ use async_flow::{Inputs, Outputs, Result, System};
 #[tokio::main(flavor = "current_thread")]
 pub async fn main() -> Result {
     System::run(|system| {
-        let stdin = system.stdin::<f64>();
-        let stdout = system.stdout::<f64>();
+        let stdin = system.read_stdin::<f64>();
+        let stdout = system.write_stdout::<f64>();
         system.spawn(sqrt(stdin, stdout));
     })
     .await

@@ -25,5 +25,5 @@ pub enum Error {
     Stdio(#[from] std::io::Error),
 
     #[error("{0}")]
-    Other(#[from] Box<dyn std::error::Error + Send + Sync>),
+    Other(#[from] Box<dyn core::error::Error + Send + Sync>),
 }
