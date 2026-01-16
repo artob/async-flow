@@ -1,7 +1,7 @@
 // This is free and unencumbered software released into the public domain.
 
 use crate::io::RecvError;
-use alloc::{borrow::Cow, boxed::Box};
+use alloc::{borrow::Cow, boxed::Box, vec::Vec};
 use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Receiver;
 
@@ -28,8 +28,20 @@ impl<T> Inputs<T> {
         Some(self.rx.max_capacity())
     }
 
+    pub async fn recv_all(&mut self) -> Result<Vec<T>, RecvError> {
+        let mut inputs = Vec::new();
+        while let Some(input) = self.recv().await? {
+            inputs.push(input);
+        }
+        Ok(inputs)
+    }
+
     pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         Ok(self.rx.recv().await)
+    }
+
+    pub fn recv_blocking(&mut self) -> Result<Option<T>, RecvError> {
+        Ok(self.rx.blocking_recv())
     }
 }
 
