@@ -1,10 +1,10 @@
 // This is free and unencumbered software released into the public domain.
 
+use super::Inputs;
 use crate::io::Result;
 use alloc::string::{String, ToString};
 
-#[cfg(feature = "tokio")]
-pub async fn stderr<T: ToString>(mut inputs: crate::tokio::Inputs<T>) -> Result {
+pub async fn stderr<T: ToString>(mut inputs: Inputs<T>) -> Result {
     use tokio::io::AsyncWriteExt;
 
     let mut output = tokio::io::stderr();

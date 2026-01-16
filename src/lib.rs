@@ -11,16 +11,18 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-pub mod io;
+mod io;
+pub use io::*;
 
 #[cfg(feature = "flume")]
 pub mod flume;
-
-#[cfg(feature = "std")]
-pub mod stdio;
+#[cfg(all(feature = "flume", not(feature = "tokio")))]
+pub use flume::*;
 
 #[cfg(feature = "tokio")]
 pub mod tokio;
+#[cfg(all(feature = "tokio", not(feature = "flume")))]
+pub use tokio::*;
 
 #[doc = include_str!("../README.md")]
 #[cfg(doctest)]

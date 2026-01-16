@@ -18,6 +18,10 @@ pub struct System {
 }
 
 impl System {
+    pub fn bounded<T>(buffer: usize) -> (Outputs<T>, Inputs<T>) {
+        super::bounded(buffer)
+    }
+
     /// Builds and executes a system, blocking until completion.
     pub async fn run<F: FnOnce(&mut Self)>(f: F) -> Result {
         Self::build(f).execute().await

@@ -1,11 +1,10 @@
 // This is free and unencumbered software released into the public domain.
 
+use super::Outputs;
 use crate::io::{Error, Result};
-use alloc::string::String;
 use core::str::FromStr;
 
-#[cfg(feature = "tokio")]
-pub async fn stdin<T: FromStr>(outputs: crate::tokio::Outputs<T>) -> Result {
+pub async fn stdin<T: FromStr>(outputs: Outputs<T>) -> Result {
     use std::io::ErrorKind;
     use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 

@@ -28,5 +28,20 @@ pub use inputs::*;
 mod outputs;
 pub use outputs::*;
 
+#[cfg(feature = "std")]
+mod stderr;
+#[cfg(feature = "std")]
+pub use stderr::*;
+
+#[cfg(feature = "std")]
+mod stdin;
+#[cfg(feature = "std")]
+pub use stdin::*;
+
+#[cfg(feature = "std")]
+mod stdout;
+#[cfg(feature = "std")]
+pub use stdout::*;
+
 mod system;
 pub use system::*;
