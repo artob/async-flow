@@ -3,17 +3,32 @@
 [![License](https://img.shields.io/badge/license-Public%20Domain-blue.svg)](https://unlicense.org)
 [![Compatibility](https://img.shields.io/badge/rust-1.85%2B-blue)](https://blog.rust-lang.org/2025/02/20/Rust-1.85.0/)
 [![Package](https://img.shields.io/crates/v/async-flow)](https://crates.io/crates/async-flow)
-[![Documentation](https://docs.rs/async-flow/badge.svg)](https://docs.rs/async-flow/)
+[![Documentation](https://docs.rs/async-flow/badge.svg)](https://docs.rs/async-flow)
 
-Async abstractions for flow-based programming (FBP).
+_"Τὰ πάντα ῥεῖ καὶ οὐδὲν μένει" — Heraclitus_
 
-🚧 _We are building in public. This is presently under heavy construction._
+**Async abstractions for [flow-based programming] (FBP) in Rust.**
+This crate can be used to implement dataflow systems consisting of
+interconnected blocks that process arbitrary messages.
+
+> [!TIP]
+> 🚧 _We are building in public. This is presently under heavy construction._
+
+[[Features](#-features)] |
+[[Prerequisites](#%EF%B8%8F-prerequisites)] |
+[[Installation](#%EF%B8%8F-installation)] |
+[[Examples](#-examples)] |
+[[Reference](#-reference)] |
+[[Development](#-development)]
 
 ## ✨ Features
 
+- Provides primitives for flow-based programming (FBP) based on [Tokio].
+- Constructs dataflow systems by connecting reusable components called blocks.
+- Compatible with the inventory of blocks provided by the [Flows.rs] project.
 - Supports opting out of any feature using comprehensive feature flags.
 - Adheres to the Rust API Guidelines in its [naming conventions].
-- 100% free and unencumbered public domain software.
+- No licensing headaches: 100% free and unencumbered public domain software.
 
 ## 🛠️ Prerequisites
 
@@ -35,6 +50,62 @@ cargo add async-flow
 use async_flow::*;
 ```
 
+### Implementing Blocks
+
+#### Implementing a `split_string` block
+
+```rust
+use async_flow::{Inputs, Outputs, Result};
+
+/// A block that splits input strings based on a delimiter.
+async fn split_string(delim: &str, mut ins: Inputs<String>, outs: Outputs<String>) -> Result {
+    while let Some(input) = ins.recv().await? {
+        for output in input.split(delim) {
+            outs.send(output.into()).await?;
+        }
+    }
+    Ok(())
+}
+```
+
+#### Implementing an `add_ints` block
+
+```rust
+use async_flow::{Inputs, Outputs, Result};
+
+/// A block that outputs the sums of input numbers.
+async fn add_ints(mut lhs: Inputs<i64>, mut rhs: Inputs<i64>, sums: Outputs<i64>) -> Result {
+    loop {
+        let (a, b) = tokio::try_join!(lhs.recv(), rhs.recv())?;
+        match (a, b) {
+            (Some(a), Some(b)) => sums.send(a + b).await?,
+            _ => break,
+        }
+    }
+    Ok(())
+}
+```
+
+## 📚 Reference
+
+[docs.rs/async-flow](https://docs.rs/async-flow)
+
+### Glossary
+
+- **System**: A collection of blocks that are connected together.
+  Systems are the top-level entities in dataflow programs.
+
+- **Block**: An encapsulated system component that processes messages.
+  Blocks are the autonomous units of computation in a system.
+
+- **Port**: A named connection point on a block that sends or receives
+  messages. Ports are the only interfaces through which blocks communicate
+  with each other.
+
+- **Message**: A unit of data that flows between blocks in a system, from port
+  to port. Any Rust type that implements the `Send + Sync + 'static` traits can
+  be used as a message.
+
 ## 👨‍💻 Development
 
 ```bash
@@ -49,4 +120,7 @@ git clone https://github.com/dryrust/async-flow.git
 [![Share on Facebook](https://img.shields.io/badge/share%20on-fb-1976D2?logo=facebook)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/dryrust/async-flow)
 [![Share on LinkedIn](https://img.shields.io/badge/share%20on-linkedin-3949AB?logo=linkedin)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/dryrust/async-flow)
 
+[Flows.rs]: https://crates.io/crates/flows
+[Tokio]: https://tokio.rs
+[flow-based programming]: https://jpaulm.github.io/fbp/
 [naming conventions]: https://rust-lang.github.io/api-guidelines/naming.html
