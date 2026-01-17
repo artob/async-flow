@@ -1,6 +1,6 @@
 // This is free and unencumbered software released into the public domain.
 
-//! This crate provides async flow traits.
+//! This crate provides async primitives for flow-based programming (FBP).
 
 #![no_std]
 #![forbid(unsafe_code)]

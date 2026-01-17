@@ -14,12 +14,16 @@ interconnected blocks that process arbitrary messages.
 > [!TIP]
 > 🚧 _We are building in public. This is presently under heavy construction._
 
+<sub>
+
 [[Features](#-features)] |
 [[Prerequisites](#%EF%B8%8F-prerequisites)] |
 [[Installation](#%EF%B8%8F-installation)] |
 [[Examples](#-examples)] |
 [[Reference](#-reference)] |
 [[Development](#%E2%80%8D-development)]
+
+</sub>
 
 ## ✨ Features
 
@@ -50,6 +54,33 @@ cargo add async-flow
 use async_flow::*;
 ```
 
+### Composing Systems
+
+#### Reading from stdin and writing to stdout
+
+```rust
+use async_flow::{Inputs, Outputs, Result, System};
+
+#[tokio::main(flavor = "current_thread")]
+pub async fn main() -> Result {
+    System::run(|s| {
+        let stdin = s.read_stdin::<f64>();
+        let stdout = s.write_stdout::<f64>();
+        s.spawn(sqrt(stdin, stdout));
+    })
+    .await
+}
+
+/// A block that computes the square root of input numbers.
+async fn sqrt(mut inputs: Inputs<f64>, outputs: Outputs<f64>) -> Result {
+    while let Some(input) = inputs.recv().await? {
+        let output = input.sqrt();
+        outputs.send(output).await?;
+    }
+    Ok(())
+}
+```
+
 ### Implementing Blocks
 
 #### Implementing a `split_string` block
@@ -58,10 +89,10 @@ use async_flow::*;
 use async_flow::{Inputs, Outputs, Result};
 
 /// A block that splits input strings based on a delimiter.
-async fn split_string(delim: &str, mut ins: Inputs<String>, outs: Outputs<String>) -> Result {
-    while let Some(input) = ins.recv().await? {
+async fn split_string(delim: &str, mut inputs: Inputs<String>, outputs: Outputs<String>) -> Result {
+    while let Some(input) = inputs.recv().await? {
         for output in input.split(delim) {
-            outs.send(output.into()).await?;
+            outputs.send(output.into()).await?;
         }
     }
     Ok(())
