@@ -5,6 +5,11 @@ use dogma::{MaybeLabeled, MaybeNamed};
 
 /// The common interface for ports, whether for input or output.
 pub trait Port<T>: Debug + MaybeNamed + MaybeLabeled {
+    /// Checks if a port is open.
+    fn is_open(&self) -> bool {
+        !self.is_closed()
+    }
+
     /// Checks if a port is closed.
     fn is_closed(&self) -> bool;
 

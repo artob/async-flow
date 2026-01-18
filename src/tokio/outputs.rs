@@ -5,7 +5,7 @@ use alloc::{borrow::Cow, boxed::Box};
 use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Sender;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Outputs<T> {
     pub(crate) tx: Option<Sender<T>>,
 }
@@ -17,12 +17,24 @@ impl<T> core::fmt::Debug for Outputs<T> {
 }
 
 impl<T> Outputs<T> {
+    pub fn is_open(&self) -> bool {
+        !self.is_closed()
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.tx.as_ref().map(|tx| tx.is_closed()).unwrap_or(true)
+    }
+
     pub fn capacity(&self) -> Option<usize> {
         self.tx.as_ref().map(|tx| tx.capacity())
     }
 
     pub fn max_capacity(&self) -> Option<usize> {
         self.tx.as_ref().map(|tx| tx.max_capacity())
+    }
+
+    pub fn close(&mut self) {
+        let _ = self.tx.take();
     }
 
     pub async fn send(&self, value: T) -> Result<(), SendError> {
@@ -77,11 +89,11 @@ impl<T: Send + 'static> crate::io::OutputPort<T> for Outputs<T> {
 
 impl<T> crate::io::Port<T> for Outputs<T> {
     fn is_closed(&self) -> bool {
-        self.tx.as_ref().map(|tx| tx.is_closed()).unwrap_or(true)
+        self.is_closed()
     }
 
     fn close(&mut self) {
-        self.tx.take();
+        self.close()
     }
 }
 

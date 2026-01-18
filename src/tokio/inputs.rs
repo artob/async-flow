@@ -5,8 +5,9 @@ use alloc::{borrow::Cow, boxed::Box, vec::Vec};
 use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Receiver;
 
+#[derive(Default)]
 pub struct Inputs<T> {
-    pub(crate) rx: Receiver<T>,
+    pub(crate) rx: Option<Receiver<T>>,
 }
 
 impl<T> core::fmt::Debug for Inputs<T> {
@@ -16,12 +17,32 @@ impl<T> core::fmt::Debug for Inputs<T> {
 }
 
 impl<T> Inputs<T> {
+    pub fn is_open(&self) -> bool {
+        !self.is_closed()
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.rx.as_ref().map(|rx| rx.is_closed()).unwrap_or(true)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rx.as_ref().map(|rx| rx.is_empty()).unwrap_or(true)
+    }
+
     pub fn capacity(&self) -> Option<usize> {
-        Some(self.rx.capacity())
+        self.rx.as_ref().map(|rx| rx.capacity())
     }
 
     pub fn max_capacity(&self) -> Option<usize> {
-        Some(self.rx.max_capacity())
+        self.rx.as_ref().map(|rx| rx.max_capacity())
+    }
+
+    pub fn close(&mut self) {
+        if let Some(rx) = self.rx.as_mut() {
+            if !rx.is_closed() {
+                rx.close() // idempotent
+            }
+        }
     }
 
     pub async fn recv_all(&mut self) -> Result<Vec<T>, RecvError> {
@@ -33,36 +54,44 @@ impl<T> Inputs<T> {
     }
 
     pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
-        Ok(self.rx.recv().await)
+        if let Some(rx) = self.rx.as_mut() {
+            Ok(rx.recv().await)
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn recv_blocking(&mut self) -> Result<Option<T>, RecvError> {
-        Ok(self.rx.blocking_recv())
+        if let Some(rx) = self.rx.as_mut() {
+            Ok(rx.blocking_recv())
+        } else {
+            Ok(None)
+        }
     }
 }
 
 impl<T> AsRef<Receiver<T>> for Inputs<T> {
     fn as_ref(&self) -> &Receiver<T> {
-        &self.rx
+        self.rx.as_ref().unwrap()
     }
 }
 
 impl<T> AsMut<Receiver<T>> for Inputs<T> {
     fn as_mut(&mut self) -> &mut Receiver<T> {
-        &mut self.rx
+        self.rx.as_mut().unwrap()
     }
 }
 
 impl<T> From<Receiver<T>> for Inputs<T> {
     fn from(input: Receiver<T>) -> Self {
-        Self { rx: input }
+        Self { rx: Some(input) }
     }
 }
 
 #[async_trait::async_trait]
 impl<T: Send> crate::io::InputPort<T> for Inputs<T> {
     fn is_empty(&self) -> bool {
-        self.rx.is_empty()
+        self.is_empty()
     }
 
     async fn recv(&mut self) -> Result<Option<T>, RecvError> {
@@ -72,11 +101,11 @@ impl<T: Send> crate::io::InputPort<T> for Inputs<T> {
 
 impl<T> crate::io::Port<T> for Inputs<T> {
     fn is_closed(&self) -> bool {
-        self.rx.is_closed()
+        self.is_closed()
     }
 
     fn close(&mut self) {
-        self.rx.close()
+        self.close()
     }
 }
 
