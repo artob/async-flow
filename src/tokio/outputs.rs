@@ -6,7 +6,7 @@ use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Sender;
 
 #[derive(Clone, Default)]
-pub struct Outputs<T> {
+pub struct Outputs<T, const N: usize = 0> {
     pub(crate) tx: Option<Sender<T>>,
 }
 

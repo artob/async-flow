@@ -6,7 +6,7 @@ use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Receiver;
 
 #[derive(Default)]
-pub struct Inputs<T> {
+pub struct Inputs<T, const N: usize = 0> {
     pub(crate) rx: Option<Receiver<T>>,
 }
 

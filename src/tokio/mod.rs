@@ -22,8 +22,14 @@ where
     (Box::new(outputs), Box::new(inputs))
 }
 
+mod input;
+pub use input::*;
+
 mod inputs;
 pub use inputs::*;
+
+mod output;
+pub use output::*;
 
 mod outputs;
 pub use outputs::*;
