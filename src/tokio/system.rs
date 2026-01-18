@@ -1,9 +1,7 @@
 // This is free and unencumbered software released into the public domain.
 
-use crate::{
-    io::Result,
-    tokio::{Inputs, Outputs},
-};
+use super::{Channel, Inputs, ONESHOT, Outputs, UNLIMITED};
+use crate::io::Result;
 use tokio::task::{AbortHandle, JoinSet};
 
 pub type Subsystem = System;
@@ -13,8 +11,12 @@ pub struct System {
 }
 
 impl System {
-    pub fn bounded<T>(buffer: usize) -> (Outputs<T>, Inputs<T>) {
-        super::bounded(buffer)
+    pub fn oneshot<T>() -> Channel<T, ONESHOT> {
+        Channel::oneshot()
+    }
+
+    pub fn bounded<T>(buffer: usize) -> Channel<T, UNLIMITED> {
+        Channel::bounded(buffer)
     }
 
     /// Builds and executes a system, blocking until completion.
@@ -69,7 +71,7 @@ impl System {
         T: Send + 'static,
         <T as core::str::FromStr>::Err: Send,
     {
-        let (output, input) = super::bounded(1);
+        let (output, input) = super::Channel::bounded(1).into_inner(); // TODO
         let block = super::stdin(output);
         self.blocks.spawn(block);
         input
@@ -80,7 +82,7 @@ impl System {
     where
         T: Send + 'static,
     {
-        let (output, input) = super::bounded(1);
+        let (output, input) = super::Channel::bounded(1).into_inner(); // TODO
         let block = super::stdout(input);
         self.blocks.spawn(block);
         output

@@ -3,7 +3,7 @@
 /// cargo run --example basic
 #[tokio::main(flavor = "current_thread")]
 pub async fn main() {
-    let (outputs, mut inputs) = async_flow::bounded(1);
+    let (outputs, mut inputs) = async_flow::Channel::bounded(1).into_inner();
 
     tokio::spawn(async move {
         outputs.send("value1").await.unwrap();
