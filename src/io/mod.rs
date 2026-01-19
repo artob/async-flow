@@ -18,6 +18,9 @@ pub use port::*;
 mod port_direction;
 pub use port_direction::*;
 
+mod port_event;
+pub use port_event::*;
+
 mod port_state;
 pub use port_state::*;
 

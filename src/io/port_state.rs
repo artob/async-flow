@@ -1,6 +1,6 @@
 // This is free and unencumbered software released into the public domain.
 
-/// The current state of a port.
+/// A port's possible states (either closed, open, or connected).
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
@@ -14,17 +14,17 @@ pub enum PortState {
 impl PortState {
     /// Checks whether the port state is currently closed.
     pub fn is_closed(&self) -> bool {
-        *self == PortState::Closed
+        *self == Self::Closed
     }
 
     /// Checks whether the port state is currently open.
     pub fn is_open(&self) -> bool {
-        *self == PortState::Open
+        *self == Self::Open
     }
 
     /// Checks whether the port state is currently connected.
     pub fn is_connected(&self) -> bool {
-        *self == PortState::Connected
+        *self == Self::Connected
     }
 
     pub fn as_str(&self) -> &str {
