@@ -14,6 +14,12 @@ pub enum OutputPortState<T> {
     Closed,
 }
 
+impl<T> Into<SendError> for &OutputPortState<T> {
+    fn into(self) -> SendError {
+        Into::<PortState>::into(self).into()
+    }
+}
+
 impl<T> Into<PortState> for &OutputPortState<T> {
     fn into(self) -> PortState {
         use OutputPortState::*;
@@ -88,11 +94,11 @@ impl<T, const N: usize> Outputs<T, N> {
         use OutputPortState::*;
         match self.state {
             Connected(ref tx) => Ok(tx.send(event).await?),
-            _ => Err(SendError), // TODO: SendError::Closed
+            _ => Err((&self.state).into()),
         }
     }
 
-    pub fn send_blocking(&self, _message: T) -> Result<(), SendError> {
+    pub fn blocking_send(&self, _message: T) -> Result<(), SendError> {
         todo!() // TODO
     }
 }

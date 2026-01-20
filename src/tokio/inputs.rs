@@ -14,6 +14,12 @@ pub enum InputPortState<T> {
     Closed,
 }
 
+impl<T> Into<RecvError> for &InputPortState<T> {
+    fn into(self) -> RecvError {
+        Into::<PortState>::into(self).into()
+    }
+}
+
 impl<T> Into<PortState> for &InputPortState<T> {
     fn into(self) -> PortState {
         use InputPortState::*;
@@ -127,7 +133,7 @@ impl<T, const N: usize> Inputs<T, N> {
         }
     }
 
-    pub fn recv_blocking(&mut self) -> Result<Option<T>, RecvError> {
+    pub fn blocking_recv(&mut self) -> Result<Option<T>, RecvError> {
         todo!() // TODO
     }
 }
