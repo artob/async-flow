@@ -1,6 +1,6 @@
 // This is free and unencumbered software released into the public domain.
 
-use crate::io::{Port, RecvError};
+use crate::{error::RecvError, io::Port};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 

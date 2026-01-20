@@ -1,7 +1,7 @@
 // This is free and unencumbered software released into the public domain.
 
 use super::Inputs;
-use crate::io::Result;
+use crate::error::Result;
 use alloc::string::ToString;
 
 pub async fn stderr<T: ToString>(mut inputs: Inputs<T>) -> Result {

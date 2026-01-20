@@ -1,6 +1,6 @@
 // This is free and unencumbered software released into the public domain.
 
-use crate::{PortDirection, PortEvent, PortState, io::RecvError};
+use crate::{PortDirection, PortEvent, PortState, error::RecvError};
 use alloc::{borrow::Cow, boxed::Box};
 use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Receiver;

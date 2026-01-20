@@ -1,6 +1,6 @@
 // This is free and unencumbered software released into the public domain.
 
-use crate::io::SendError;
+use crate::error::SendError;
 use alloc::boxed::Box;
 
 #[async_trait::async_trait]

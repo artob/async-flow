@@ -1,7 +1,7 @@
 // This is free and unencumbered software released into the public domain.
 
 use super::Outputs;
-use crate::io::{Error, Result};
+use crate::error::{Error, Result};
 use core::str::FromStr;
 
 pub async fn stdin<T: FromStr>(outputs: Outputs<T>) -> Result {

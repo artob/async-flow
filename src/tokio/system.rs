@@ -1,7 +1,7 @@
 // This is free and unencumbered software released into the public domain.
 
 use super::{Channel, Inputs, ONESHOT, Outputs, UNLIMITED};
-use crate::io::Result;
+use crate::error::Result;
 use tokio::task::{AbortHandle, JoinSet};
 
 pub type Subsystem = System;
