@@ -1,7 +1,7 @@
 // This is free and unencumbered software released into the public domain.
 
 use tokio::{
-    runtime::{Builder, Handle, Runtime},
+    runtime::{Builder, Runtime},
     task::LocalSet,
 };
 
@@ -17,22 +17,38 @@ impl SerialScheduler {
         let local_set = LocalSet::new();
         Ok(Self { runtime, local_set })
     }
+
+    #[cfg(feature = "tokio")]
+    pub fn id(&self) -> tokio::runtime::Id {
+        self.local_set.id()
+    }
+
+    pub fn spawn<F>(&self, future: F)
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+    {
+        let _ = self.local_set.spawn_local(future);
+    }
 }
 
-impl AsRef<Runtime> for SerialScheduler {
-    fn as_ref(&self) -> &Runtime {
+#[cfg(feature = "tokio")]
+impl AsRef<tokio::runtime::Runtime> for SerialScheduler {
+    fn as_ref(&self) -> &tokio::runtime::Runtime {
         &self.runtime
     }
 }
 
-impl AsRef<Handle> for SerialScheduler {
-    fn as_ref(&self) -> &Handle {
+#[cfg(feature = "tokio")]
+impl AsRef<tokio::runtime::Handle> for SerialScheduler {
+    fn as_ref(&self) -> &tokio::runtime::Handle {
         self.runtime.handle()
     }
 }
 
-impl AsRef<LocalSet> for SerialScheduler {
-    fn as_ref(&self) -> &LocalSet {
+#[cfg(feature = "tokio")]
+impl AsRef<tokio::task::LocalSet> for SerialScheduler {
+    fn as_ref(&self) -> &tokio::task::LocalSet {
         &self.local_set
     }
 }

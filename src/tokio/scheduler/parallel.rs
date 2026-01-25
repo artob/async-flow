@@ -1,6 +1,6 @@
 // This is free and unencumbered software released into the public domain.
 
-use tokio::runtime::{Builder, Handle, Runtime};
+use tokio::runtime::{Builder, Runtime};
 
 #[derive(Debug)]
 pub struct ParallelScheduler {
@@ -12,16 +12,23 @@ impl ParallelScheduler {
         let runtime = Builder::new_multi_thread().enable_all().build()?;
         Ok(Self { runtime })
     }
+
+    #[cfg(feature = "tokio")]
+    pub fn id(&self) -> tokio::runtime::Id {
+        self.runtime.handle().id()
+    }
 }
 
-impl AsRef<Runtime> for ParallelScheduler {
-    fn as_ref(&self) -> &Runtime {
+#[cfg(feature = "tokio")]
+impl AsRef<tokio::runtime::Runtime> for ParallelScheduler {
+    fn as_ref(&self) -> &tokio::runtime::Runtime {
         &self.runtime
     }
 }
 
-impl AsRef<Handle> for ParallelScheduler {
-    fn as_ref(&self) -> &Handle {
+#[cfg(feature = "tokio")]
+impl AsRef<tokio::runtime::Handle> for ParallelScheduler {
+    fn as_ref(&self) -> &tokio::runtime::Handle {
         self.runtime.handle()
     }
 }
