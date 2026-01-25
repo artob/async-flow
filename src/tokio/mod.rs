@@ -30,5 +30,8 @@ mod stdout;
 #[cfg(feature = "std")]
 pub use stdout::*;
 
+mod scheduler;
+pub use scheduler::*;
+
 mod system;
 pub use system::*;

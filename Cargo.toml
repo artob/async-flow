@@ -18,9 +18,13 @@ publish = true
 
 [features]
 default = ["all", "std"]
-all = ["stream", "tokio"]
+all = ["parallel", "serial", "stream", "tokio"]
 std = ["dogma/std", "replace_with/std", "tokio?/io-std", "tokio?/io-util"]
 unstable = []
+
+# Features:
+parallel = ["tokio?/rt-multi-thread"]
+serial = ["tokio?/rt"]
 
 # Integrations:
 flume = ["dep:flume"]
@@ -38,5 +42,5 @@ thiserror = { version = "2", default-features = false }
 flume = { version = "0.12", default-features = false, features = ["async"], optional = true }
 serde = { version = "1", default-features = false, features = ["derive"], optional = true }
 serde_json = { version = "1", default-features = false, optional = true }
-tokio = { version = "1.49", default-features = false, features = ["macros", "rt", "sync"], optional = true }
+tokio = { version = "1.49", default-features = false, features = ["macros", "sync"], optional = true }
 tokio-stream = { version = "0.1", default-features = false, optional = true }

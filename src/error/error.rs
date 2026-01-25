@@ -20,6 +20,10 @@ pub enum Error {
     #[error("{0}")]
     TrySend(#[from] TrySendError),
 
+    #[cfg(feature = "tokio")]
+    #[error("{0}")]
+    Join(#[from] tokio::task::JoinError),
+
     #[cfg(feature = "std")]
     #[error("{0}")]
     Stdio(#[from] std::io::Error),
