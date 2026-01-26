@@ -1,11 +1,14 @@
 // This is free and unencumbered software released into the public domain.
 
+use crate::Scheduler;
 use tokio::runtime::{Builder, Runtime};
 
 #[derive(Debug)]
 pub struct ParallelScheduler {
     runtime: Runtime,
 }
+
+impl Scheduler for ParallelScheduler {}
 
 impl ParallelScheduler {
     pub fn new() -> std::io::Result<Self> {

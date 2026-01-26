@@ -15,6 +15,10 @@ pub struct Channel<T, const N: usize = UNLIMITED> {
 }
 
 impl<T> Channel<T> {
+    pub fn pair() -> (Channel<T, UNLIMITED>, Channel<T, UNLIMITED>) {
+        (Self::bounded(1), Self::bounded(1))
+    }
+
     /// Creates a one-shot connection.
     pub fn oneshot() -> Channel<T, ONESHOT> {
         Channel::from(mpsc::channel(1))
