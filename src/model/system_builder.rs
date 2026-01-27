@@ -1,6 +1,7 @@
 // This is free and unencumbered software released into the public domain.
 
 use super::{BlockDefinition, InputId, Inputs, OutputId, Outputs, SystemDefinition};
+use alloc::collections::BTreeSet;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -9,6 +10,8 @@ pub enum SystemBuildError {
     UnregisteredInput(InputId),
     #[error("unregistered output port ID: {0}")]
     UnregisteredOutput(OutputId),
+    #[error("already connected output port ID: {0}")]
+    AlreadyConnectedOutput(OutputId),
 }
 
 /// A builder for system definitions.
@@ -25,6 +28,9 @@ pub enum SystemBuildError {
 #[derive(Clone, Debug, Default)]
 pub struct SystemBuilder {
     system: SystemDefinition,
+    registered_inputs: BTreeSet<InputId>,
+    registered_outputs: BTreeSet<OutputId>,
+    connected_outputs: BTreeSet<OutputId>,
 }
 
 impl SystemBuilder {
@@ -33,7 +39,21 @@ impl SystemBuilder {
         Self::default()
     }
 
-    /// Registers a block.
+    /// Creates a new input port registered to the system under construction.
+    pub fn input<T>(&mut self) -> Inputs<T> {
+        let port = Inputs::<T>::default();
+        self.register_input(port.id());
+        port
+    }
+
+    /// Creates a new output port registered to the system under construction.
+    pub fn output<T>(&mut self) -> Outputs<T> {
+        let port = Outputs::<T>::default();
+        self.register_output(port.id());
+        port
+    }
+
+    /// Registers an instantiated block with the system under construction.
     pub fn register<T: BlockDefinition>(&mut self, block: T) -> T {
         for input in block.inputs() {
             self.register_input(input);
@@ -44,14 +64,14 @@ impl SystemBuilder {
         block
     }
 
-    /// Registers a block's input port.
+    /// Registers a block's input port with the system under construction.
     pub fn register_input(&mut self, input: impl Into<InputId>) {
-        self.system.registered_inputs.insert(input.into());
+        self.registered_inputs.insert(input.into());
     }
 
-    /// Registers a block's output port.
+    /// Registers a block's output port with the system under construction.
     pub fn register_output(&mut self, output: impl Into<OutputId>) {
-        self.system.registered_outputs.insert(output.into());
+        self.registered_outputs.insert(output.into());
     }
 
     /// Connects an output port to an input port of the same type.
@@ -63,16 +83,39 @@ impl SystemBuilder {
         output: &Outputs<T>,
         input: &Inputs<T>,
     ) -> Result<bool, SystemBuildError> {
-        if !self.system.registered_inputs.contains(&input.id()) {
-            return Err(SystemBuildError::UnregisteredInput(input.id()));
-        }
-        if !self.system.registered_outputs.contains(&output.id()) {
-            return Err(SystemBuildError::UnregisteredOutput(output.id()));
-        }
-        Ok(self.system.connections.insert((output.id(), input.id())))
+        self.connect_ids(output.id(), input.id())
     }
 
-    /// Builds the system.
+    /// Connects an output port ID to an input port ID.
+    /// This isn't public because it doesn't enforce type safety.
+    ///
+    /// Returns a boolean indicating whether the connection was newly
+    /// inserted or already existed.
+    pub(crate) fn connect_ids(
+        &mut self,
+        output: impl Into<OutputId>,
+        input: impl Into<InputId>,
+    ) -> Result<bool, SystemBuildError> {
+        let output = output.into();
+        let input = input.into();
+        if !self.registered_inputs.contains(&input) {
+            return Err(SystemBuildError::UnregisteredInput(input));
+        }
+        if !self.registered_outputs.contains(&output) {
+            return Err(SystemBuildError::UnregisteredOutput(output));
+        }
+        if self.connected_outputs.contains(&output) {
+            return Err(SystemBuildError::AlreadyConnectedOutput(output));
+        }
+        let result = self.system.connections.insert((output, input));
+        if result {
+            // Output ports can only be connected once:
+            self.connected_outputs.insert(output);
+        }
+        Ok(result)
+    }
+
+    /// Builds the system under construction.
     pub fn build(self) -> SystemDefinition {
         self.system
     }

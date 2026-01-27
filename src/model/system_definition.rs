@@ -8,8 +8,6 @@ use alloc::collections::BTreeSet;
 pub struct SystemDefinition {
     //pub(crate) blocks: Vec<BlockDefinition>,
     pub(crate) connections: BTreeSet<(OutputId, InputId)>,
-    pub(crate) registered_outputs: BTreeSet<OutputId>,
-    pub(crate) registered_inputs: BTreeSet<InputId>,
 }
 
 impl SystemDefinition {
