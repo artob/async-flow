@@ -1,6 +1,8 @@
 // This is free and unencumbered software released into the public domain.
 
-use super::{BlockDefinition, InputPortId, Inputs, OutputPortId, Outputs, SystemDefinition};
+use super::{
+    BlockDefinition, InputPortId, Inputs, OutputPortId, Outputs, PortId, SystemDefinition,
+};
 use alloc::{collections::BTreeSet, rc::Rc};
 use thiserror::Error;
 
@@ -56,6 +58,14 @@ impl SystemBuilder {
         block
     }
 
+    /// Registers an input or output port with the system under construction.
+    pub fn register_port(&mut self, input: impl Into<PortId>) {
+        match input.into() {
+            PortId::Input(input) => self.register_input(input),
+            PortId::Output(output) => self.register_output(output),
+        }
+    }
+
     /// Registers an input port with the system under construction.
     pub fn register_input(&mut self, input: impl Into<InputPortId>) {
         let input = input.into();
@@ -66,6 +76,23 @@ impl SystemBuilder {
     pub fn register_output(&mut self, output: impl Into<OutputPortId>) {
         let output = output.into();
         self.registered_outputs.insert(output);
+    }
+
+    /// Exports an input or output port registered with the system under
+    /// construction.
+    pub fn export(&mut self, input: impl Into<PortId>) -> Result<PortId, SystemBuildError> {
+        self.export_port(input)
+    }
+
+    /// Exports an input or output port registered with the system under
+    /// construction.
+    pub fn export_port(&mut self, input: impl Into<PortId>) -> Result<PortId, SystemBuildError> {
+        let input = input.into();
+        match input.into() {
+            PortId::Input(input) => self.export_input(input).map(|_| ()),
+            PortId::Output(output) => self.export_output(output).map(|_| ()),
+        }?;
+        Ok(input)
     }
 
     /// Exports an input port registered with the system under construction.

@@ -1,6 +1,6 @@
 // This is free and unencumbered software released into the public domain.
 
-use super::InputPortId;
+use super::{InputPortId, PortId};
 use core::{
     any::type_name,
     marker::PhantomData,
@@ -55,5 +55,11 @@ impl<T, const MAX: isize, const MIN: isize> Inputs<T, MAX, MIN> {
 impl<T, const MAX: isize, const MIN: isize> Into<InputPortId> for &Inputs<T, MAX, MIN> {
     fn into(self) -> InputPortId {
         self.0
+    }
+}
+
+impl<T, const MAX: isize, const MIN: isize> Into<PortId> for &Inputs<T, MAX, MIN> {
+    fn into(self) -> PortId {
+        self.0.into()
     }
 }
