@@ -48,15 +48,24 @@ impl From<OutputPortId> for PortId {
     }
 }
 
-impl Into<isize> for PortId {
-    fn into(self) -> isize {
-        self.as_isize()
+impl From<PortId> for isize {
+    fn from(input: PortId) -> isize {
+        input.as_isize()
     }
 }
 
-impl Into<usize> for PortId {
-    fn into(self) -> usize {
-        self.as_usize()
+impl From<PortId> for usize {
+    fn from(input: PortId) -> usize {
+        input.as_usize()
+    }
+}
+
+impl AsRef<isize> for PortId {
+    fn as_ref(&self) -> &isize {
+        match self {
+            PortId::Input(id) => &id.0,
+            PortId::Output(id) => &id.0,
+        }
     }
 }
 
@@ -93,15 +102,21 @@ impl TryFrom<isize> for InputPortId {
     }
 }
 
-impl Into<isize> for InputPortId {
-    fn into(self) -> isize {
-        self.0
+impl From<InputPortId> for isize {
+    fn from(input: InputPortId) -> isize {
+        input.0
     }
 }
 
-impl Into<usize> for InputPortId {
-    fn into(self) -> usize {
-        self.0.unsigned_abs()
+impl From<InputPortId> for usize {
+    fn from(input: InputPortId) -> usize {
+        input.0.unsigned_abs()
+    }
+}
+
+impl AsRef<isize> for InputPortId {
+    fn as_ref(&self) -> &isize {
+        &self.0
     }
 }
 
@@ -135,15 +150,21 @@ impl TryFrom<isize> for OutputPortId {
     }
 }
 
-impl Into<isize> for OutputPortId {
-    fn into(self) -> isize {
-        self.0
+impl From<OutputPortId> for isize {
+    fn from(input: OutputPortId) -> isize {
+        input.0
     }
 }
 
-impl Into<usize> for OutputPortId {
-    fn into(self) -> usize {
-        self.0 as usize
+impl From<OutputPortId> for usize {
+    fn from(input: OutputPortId) -> usize {
+        input.0 as usize
+    }
+}
+
+impl AsRef<isize> for OutputPortId {
+    fn as_ref(&self) -> &isize {
+        &self.0
     }
 }
 

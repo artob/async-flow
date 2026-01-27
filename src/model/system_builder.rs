@@ -4,7 +4,7 @@ use super::{
     BlockDefinition, InputPortId, Inputs, OutputPortId, Outputs, PortId, PortIdSet,
     SystemDefinition,
 };
-use alloc::{rc::Rc, vec::Vec};
+use alloc::rc::Rc;
 use core::fmt::Debug;
 use thiserror::Error;
 
@@ -103,7 +103,7 @@ impl SystemBuilder {
         input: impl Into<InputPortId>,
     ) -> Result<InputPortId, SystemBuildError> {
         let input = input.into();
-        if !self.registered_inputs.contains(&input) {
+        if !self.registered_inputs.contains(input) {
             return Err(SystemBuildError::UnregisteredInput(input));
         }
         self.system.inputs.insert(input);
@@ -116,7 +116,7 @@ impl SystemBuilder {
         output: impl Into<OutputPortId>,
     ) -> Result<OutputPortId, SystemBuildError> {
         let output = output.into();
-        if !self.registered_outputs.contains(&output) {
+        if !self.registered_outputs.contains(output) {
             return Err(SystemBuildError::UnregisteredOutput(output));
         }
         self.system.outputs.insert(output);
@@ -147,13 +147,13 @@ impl SystemBuilder {
     ) -> Result<bool, SystemBuildError> {
         let output = output.into();
         let input = input.into();
-        if !self.registered_inputs.contains(&input) {
+        if !self.registered_inputs.contains(input) {
             return Err(SystemBuildError::UnregisteredInput(input));
         }
-        if !self.registered_outputs.contains(&output) {
+        if !self.registered_outputs.contains(output) {
             return Err(SystemBuildError::UnregisteredOutput(output));
         }
-        if self.connected_outputs.contains(&output) {
+        if self.connected_outputs.contains(output) {
             return Err(SystemBuildError::AlreadyConnectedOutput(output));
         }
         let result = self.system.connections.insert((output, input));
@@ -173,30 +173,9 @@ impl SystemBuilder {
 impl Debug for SystemBuilder {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SystemBuilder")
-            .field(
-                "registered_inputs",
-                &self
-                    .registered_inputs
-                    .iter()
-                    .map(|id| id.0)
-                    .collect::<Vec<_>>(),
-            )
-            .field(
-                "registered_outputs",
-                &self
-                    .registered_outputs
-                    .iter()
-                    .map(|id| id.0)
-                    .collect::<Vec<_>>(),
-            )
-            .field(
-                "connected_outputs",
-                &self
-                    .connected_outputs
-                    .iter()
-                    .map(|id| id.0)
-                    .collect::<Vec<_>>(),
-            )
+            .field("registered_inputs", &self.registered_inputs)
+            .field("registered_outputs", &self.registered_outputs)
+            .field("connected_outputs", &self.connected_outputs)
             .field("system", &self.system)
             .finish()
     }

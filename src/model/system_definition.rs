@@ -24,37 +24,19 @@ impl SystemDefinition {
     }
 
     pub fn inputs_range(&self) -> Option<RangeInclusive<InputPortId>> {
-        let Some(&export_min) = self.inputs.first() else {
-            return None;
-        };
-        let Some(&export_max) = self.inputs.last() else {
-            unreachable!()
-        };
-        Some(export_min..=export_max)
+        self.inputs.range()
     }
 
     pub fn outputs_range(&self) -> Option<RangeInclusive<OutputPortId>> {
-        let Some(&export_min) = self.outputs.first() else {
-            return None;
-        };
-        let Some(&export_max) = self.outputs.last() else {
-            unreachable!()
-        };
-        Some(export_min..=export_max)
+        self.outputs.range()
     }
 }
 
 impl Debug for SystemDefinition {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SystemDefinition")
-            .field(
-                "inputs",
-                &self.inputs.iter().map(|id| id.0).collect::<Vec<_>>(),
-            )
-            .field(
-                "outputs",
-                &self.outputs.iter().map(|id| id.0).collect::<Vec<_>>(),
-            )
+            .field("inputs", &self.inputs)
+            .field("outputs", &self.outputs)
             .field("blocks", &self.blocks)
             .field(
                 "connections",
@@ -97,15 +79,11 @@ impl BlockHandle {
 
 impl Debug for BlockHandle {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let inputs = PortIdSet::from(&self.0.inputs());
+        let outputs = PortIdSet::from(&self.0.outputs());
         f.debug_struct(&self.0.name())
-            .field(
-                "inputs",
-                &self.0.inputs().iter().map(|id| id.0).collect::<Vec<_>>(),
-            )
-            .field(
-                "outputs",
-                &self.0.outputs().iter().map(|id| id.0).collect::<Vec<_>>(),
-            )
+            .field("inputs", &inputs)
+            .field("outputs", &outputs)
             .finish()
     }
 }
