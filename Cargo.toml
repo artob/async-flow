@@ -42,5 +42,5 @@ thiserror = { version = "2", default-features = false }
 flume = { version = "0.12", default-features = false, features = ["async"], optional = true }
 serde = { version = "1", default-features = false, features = ["derive"], optional = true }
 serde_json = { version = "1", default-features = false, features = ["alloc"], optional = true }
-tokio = { version = "1.49", default-features = false, features = ["macros", "sync"], optional = true }
+tokio = { version = "1.49", default-features = false, features = ["macros", "rt", "sync"], optional = true }
 tokio-stream = { version = "0.1", default-features = false, optional = true }

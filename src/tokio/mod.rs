@@ -30,7 +30,9 @@ mod stdout;
 #[cfg(feature = "std")]
 pub use stdout::*;
 
+#[cfg(all(feature = "std", any(feature = "serial", feature = "parallel")))]
 mod scheduler;
+#[cfg(all(feature = "std", any(feature = "serial", feature = "parallel")))]
 pub use scheduler::*;
 
 mod system;
