@@ -53,7 +53,7 @@ impl<T, const MAX: isize, const MIN: isize> Outputs<T, MAX, MIN> {
     }
 }
 
-impl<T, const MAX: isize, const MIN: isize> Into<OutputId> for Outputs<T, MAX, MIN> {
+impl<T, const MAX: isize, const MIN: isize> Into<OutputId> for &Outputs<T, MAX, MIN> {
     fn into(self) -> OutputId {
         self.0
     }

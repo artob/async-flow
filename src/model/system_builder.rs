@@ -41,26 +41,10 @@ impl SystemBuilder {
         Self::default()
     }
 
-    /// Creates a new input port registered to the system under construction.
-    pub fn input<T>(&mut self) -> Inputs<T> {
-        let port = Inputs::<T>::default();
-        self.register_input(port.id());
-        port
-    }
-
-    /// Creates a new output port registered to the system under construction.
-    pub fn output<T>(&mut self) -> Outputs<T> {
-        let port = Outputs::<T>::default();
-        self.register_output(port.id());
-        port
-    }
-
     /// Registers an instantiated block with the system under construction.
     pub fn register<T: BlockDefinition + 'static>(&mut self, block: T) -> Rc<T> {
         let block: Rc<T> = Rc::new(block);
-        self.system
-            .blocks
-            .push(Rc::clone(&block) as Rc<dyn BlockDefinition>);
+        self.system.push_block(&block);
 
         for input in block.inputs() {
             self.register_input(input);
@@ -72,14 +56,39 @@ impl SystemBuilder {
         block
     }
 
-    /// Registers a block's input port with the system under construction.
+    /// Registers an input port with the system under construction.
     pub fn register_input(&mut self, input: impl Into<InputId>) {
-        self.registered_inputs.insert(input.into());
+        let input = input.into();
+        self.registered_inputs.insert(input);
     }
 
-    /// Registers a block's output port with the system under construction.
+    /// Registers an output port with the system under construction.
     pub fn register_output(&mut self, output: impl Into<OutputId>) {
-        self.registered_outputs.insert(output.into());
+        let output = output.into();
+        self.registered_outputs.insert(output);
+    }
+
+    /// Exports an input port registered with the system under construction.
+    pub fn export_input(&mut self, input: impl Into<InputId>) -> Result<InputId, SystemBuildError> {
+        let input = input.into();
+        if !self.registered_inputs.contains(&input) {
+            return Err(SystemBuildError::UnregisteredInput(input));
+        }
+        self.system.inputs.insert(input);
+        Ok(input)
+    }
+
+    /// Exports an output port registered with the system under construction.
+    pub fn export_output(
+        &mut self,
+        output: impl Into<OutputId>,
+    ) -> Result<OutputId, SystemBuildError> {
+        let output = output.into();
+        if !self.registered_outputs.contains(&output) {
+            return Err(SystemBuildError::UnregisteredOutput(output));
+        }
+        self.system.outputs.insert(output);
+        Ok(output)
     }
 
     /// Connects an output port to an input port of the same type.
