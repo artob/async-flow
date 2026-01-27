@@ -34,7 +34,7 @@ tokio = ["dep:tokio"]
 
 [dependencies]
 async-trait = { version = "0.1", default-features = false }
-derive_more = { version = "2", default-features = false, features = ["debug"] }
+#derive_more = { version = "2", default-features = false, features = ["debug"] }
 dogma = { version = "0.1", default-features = false, features = ["traits"] }
 replace_with = { version = "0.1", default-features = false }
 thiserror = { version = "2", default-features = false }
