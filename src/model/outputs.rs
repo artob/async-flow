@@ -2,7 +2,7 @@
 
 use super::{OutputPortId, PortId};
 use core::{
-    any::type_name,
+    any::{TypeId, type_name},
     marker::PhantomData,
     ops::Bound,
     sync::atomic::{AtomicIsize, Ordering},
@@ -58,8 +58,24 @@ impl<T, const MAX: isize, const MIN: isize> Into<OutputPortId> for &Outputs<T, M
     }
 }
 
+impl<T: 'static, const MAX: isize, const MIN: isize> Into<(OutputPortId, TypeId)>
+    for &Outputs<T, MAX, MIN>
+{
+    fn into(self) -> (OutputPortId, TypeId) {
+        (self.0, TypeId::of::<T>())
+    }
+}
+
 impl<T, const MAX: isize, const MIN: isize> Into<PortId> for &Outputs<T, MAX, MIN> {
     fn into(self) -> PortId {
         self.0.into()
+    }
+}
+
+impl<T: 'static, const MAX: isize, const MIN: isize> Into<(PortId, TypeId)>
+    for &Outputs<T, MAX, MIN>
+{
+    fn into(self) -> (PortId, TypeId) {
+        (self.0.into(), TypeId::of::<T>())
     }
 }

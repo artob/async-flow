@@ -7,8 +7,8 @@ use core::{any::TypeId, fmt::Debug, ops::RangeInclusive};
 /// A system definition.
 #[derive(Clone, Default)]
 pub struct SystemDefinition {
-    pub inputs: PortIdSet<InputPortId>,
-    pub outputs: PortIdSet<OutputPortId>,
+    pub inputs: BTreeMap<InputPortId, TypeId>,
+    pub outputs: BTreeMap<OutputPortId, TypeId>,
     pub blocks: Vec<BlockHandle>,
     pub connections: BTreeMap<(OutputPortId, InputPortId), TypeId>,
 }
@@ -49,15 +49,29 @@ impl SystemDefinition {
 impl Debug for SystemDefinition {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SystemDefinition")
-            .field("inputs", &self.inputs)
-            .field("outputs", &self.outputs)
+            .field(
+                "inputs",
+                &self
+                    .inputs
+                    .iter()
+                    .map(|(id, typ)| (id.0, typ))
+                    .collect::<Vec<_>>(),
+            )
+            .field(
+                "outputs",
+                &self
+                    .outputs
+                    .iter()
+                    .map(|(id, typ)| (id.0, typ))
+                    .collect::<Vec<_>>(),
+            )
             .field("blocks", &self.blocks)
             .field(
                 "connections",
                 &self
                     .connections
                     .iter()
-                    .map(|((from, to), type_id)| (from.0, to.0, type_id))
+                    .map(|((from, to), typ)| ((from.0, to.0), typ))
                     .collect::<Vec<_>>(),
             )
             .finish()

@@ -82,17 +82,23 @@ impl SystemBuilder {
 
     /// Exports an input or output port registered with the system under
     /// construction.
-    pub fn export(&mut self, input: impl Into<PortId>) -> Result<PortId, SystemBuildError> {
+    pub fn export(
+        &mut self,
+        input: impl Into<(PortId, TypeId)>,
+    ) -> Result<PortId, SystemBuildError> {
         self.export_port(input)
     }
 
     /// Exports an input or output port registered with the system under
     /// construction.
-    pub fn export_port(&mut self, input: impl Into<PortId>) -> Result<PortId, SystemBuildError> {
-        let input = input.into();
-        match input.into() {
-            PortId::Input(input) => self.export_input(input).map(|_| ()),
-            PortId::Output(output) => self.export_output(output).map(|_| ()),
+    pub fn export_port(
+        &mut self,
+        input: impl Into<(PortId, TypeId)>,
+    ) -> Result<PortId, SystemBuildError> {
+        let (input, type_id) = input.into();
+        match input {
+            PortId::Input(input) => self.export_input((input, type_id)).map(|_| ()),
+            PortId::Output(output) => self.export_output((output, type_id)).map(|_| ()),
         }?;
         Ok(input)
     }
@@ -100,26 +106,26 @@ impl SystemBuilder {
     /// Exports an input port registered with the system under construction.
     pub fn export_input(
         &mut self,
-        input: impl Into<InputPortId>,
+        input: impl Into<(InputPortId, TypeId)>,
     ) -> Result<InputPortId, SystemBuildError> {
-        let input = input.into();
+        let (input, type_id) = input.into();
         if !self.registered_inputs.contains(input) {
             return Err(SystemBuildError::UnregisteredInput(input));
         }
-        self.system.inputs.insert(input);
+        self.system.inputs.insert(input, type_id);
         Ok(input)
     }
 
     /// Exports an output port registered with the system under construction.
     pub fn export_output(
         &mut self,
-        output: impl Into<OutputPortId>,
+        output: impl Into<(OutputPortId, TypeId)>,
     ) -> Result<OutputPortId, SystemBuildError> {
-        let output = output.into();
+        let (output, type_id) = output.into();
         if !self.registered_outputs.contains(output) {
             return Err(SystemBuildError::UnregisteredOutput(output));
         }
-        self.system.outputs.insert(output);
+        self.system.outputs.insert(output, type_id);
         Ok(output)
     }
 
