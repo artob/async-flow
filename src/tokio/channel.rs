@@ -3,6 +3,7 @@
 use super::{Inputs, Outputs};
 use crate::{Connection, PortEvent};
 use alloc::boxed::Box;
+use core::any::TypeId;
 use tokio::sync::mpsc;
 
 pub const UNLIMITED: usize = 0;
@@ -42,6 +43,12 @@ impl<T> Channel<T> {
     {
         let (outputs, inputs) = Self::bounded(buffer).into_inner();
         (Box::new(outputs), Box::new(inputs))
+    }
+}
+
+impl<T: 'static, const N: usize> Channel<T, N> {
+    pub fn type_id(&self) -> TypeId {
+        TypeId::of::<T>()
     }
 }
 

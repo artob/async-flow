@@ -5,7 +5,7 @@ use super::{
     SystemDefinition,
 };
 use alloc::rc::Rc;
-use core::fmt::Debug;
+use core::{any::TypeId, fmt::Debug};
 use thiserror::Error;
 
 #[derive(Clone, Debug, Error)]
@@ -127,12 +127,12 @@ impl SystemBuilder {
     ///
     /// Returns a boolean indicating whether the connection was newly
     /// inserted or already existed.
-    pub fn connect<T>(
+    pub fn connect<T: 'static>(
         &mut self,
         output: &Outputs<T>,
         input: &Inputs<T>,
     ) -> Result<bool, SystemBuildError> {
-        self.connect_ids(output.id(), input.id())
+        self.connect_ports(output.id(), input.id(), TypeId::of::<T>())
     }
 
     /// Connects an output port ID to an input port ID.
@@ -140,10 +140,11 @@ impl SystemBuilder {
     ///
     /// Returns a boolean indicating whether the connection was newly
     /// inserted or already existed.
-    pub(crate) fn connect_ids(
+    pub(crate) fn connect_ports(
         &mut self,
         output: impl Into<OutputPortId>,
         input: impl Into<InputPortId>,
+        type_id: TypeId,
     ) -> Result<bool, SystemBuildError> {
         let output = output.into();
         let input = input.into();
@@ -156,7 +157,11 @@ impl SystemBuilder {
         if self.connected_outputs.contains(output) {
             return Err(SystemBuildError::AlreadyConnectedOutput(output));
         }
-        let result = self.system.connections.insert((output, input));
+        let result = self
+            .system
+            .connections
+            .insert((output, input), type_id)
+            .is_none();
         if result {
             // Output ports can only be connected once:
             self.connected_outputs.insert(output);

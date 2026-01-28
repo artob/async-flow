@@ -1,8 +1,8 @@
 // This is free and unencumbered software released into the public domain.
 
 use super::{BlockDefinition, InputPortId, OutputPortId, PortIdSet, SystemBuilder};
-use alloc::{collections::BTreeSet, rc::Rc, vec::Vec};
-use core::{fmt::Debug, ops::RangeInclusive};
+use alloc::{collections::BTreeMap, rc::Rc, vec::Vec};
+use core::{any::TypeId, fmt::Debug, ops::RangeInclusive};
 
 /// A system definition.
 #[derive(Clone, Default)]
@@ -10,7 +10,7 @@ pub struct SystemDefinition {
     pub inputs: PortIdSet<InputPortId>,
     pub outputs: PortIdSet<OutputPortId>,
     pub blocks: Vec<BlockHandle>,
-    pub connections: BTreeSet<(OutputPortId, InputPortId)>,
+    pub connections: BTreeMap<(OutputPortId, InputPortId), TypeId>,
 }
 
 impl SystemDefinition {
@@ -57,7 +57,7 @@ impl Debug for SystemDefinition {
                 &self
                     .connections
                     .iter()
-                    .map(|(a, b)| (a.0, b.0))
+                    .map(|((from, to), type_id)| (from.0, to.0, type_id))
                     .collect::<Vec<_>>(),
             )
             .finish()
