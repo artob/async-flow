@@ -8,6 +8,9 @@ pub use connection::*;
 mod input_port;
 pub use input_port::*;
 
+mod message;
+pub use message::*;
+
 mod output_port;
 pub use output_port::*;
 

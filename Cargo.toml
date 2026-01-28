@@ -19,10 +19,11 @@ publish = true
 [features]
 default = ["all", "std"]
 all = ["parallel", "serial", "stream", "tokio"]
-std = ["dogma/std", "replace_with/std", "tokio?/io-std", "tokio?/io-util"]
+std = ["alloc", "dogma/std", "replace_with/std", "tokio?/io-std", "tokio?/io-util", "valuand/std"]
 unstable = []
 
 # Features:
+alloc = []
 parallel = ["tokio?/rt-multi-thread"]
 serial = ["tokio?/rt"]
 
@@ -38,6 +39,7 @@ async-trait = { version = "0.1", default-features = false }
 dogma = { version = "0.1", default-features = false, features = ["traits"] }
 replace_with = { version = "0.1", default-features = false }
 thiserror = { version = "2", default-features = false }
+valuand = { version = "0.0.1", default-features = false, features = ["alloc"] }
 
 # Integrations:
 flume = { version = "0.12", default-features = false, features = ["async"], optional = true }
