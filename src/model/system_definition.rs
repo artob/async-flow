@@ -19,8 +19,21 @@ impl SystemDefinition {
         SystemBuilder::new()
     }
 
+    /// Prepares this system definition for execution.
+    pub fn prepare(&self) -> crate::tokio::System {
+        self.into()
+    }
+
     pub(crate) fn push_block<T: BlockDefinition + 'static>(&mut self, block: &Rc<T>) {
         self.blocks.push(BlockHandle(Rc::clone(&block) as _));
+    }
+
+    pub fn inputs_min(&self) -> Option<InputPortId> {
+        self.inputs_range().map(|r| InputPortId(*r.start()))
+    }
+
+    pub fn inputs_max(&self) -> Option<InputPortId> {
+        self.inputs_range().map(|r| InputPortId(*r.end()))
     }
 
     pub fn inputs_range(&self) -> Option<RangeInclusive<isize>> {
@@ -32,6 +45,14 @@ impl SystemDefinition {
         let min = ranges.iter().map(|r| *r.start()).min()?;
         let max = ranges.iter().map(|r| *r.end()).max()?;
         Some(min.into()..=max.into())
+    }
+
+    pub fn outputs_min(&self) -> Option<OutputPortId> {
+        self.outputs_range().map(|r| OutputPortId(*r.start()))
+    }
+
+    pub fn outputs_max(&self) -> Option<OutputPortId> {
+        self.outputs_range().map(|r| OutputPortId(*r.end()))
     }
 
     pub fn outputs_range(&self) -> Option<RangeInclusive<isize>> {
@@ -82,6 +103,14 @@ impl Debug for SystemDefinition {
 pub struct BlockHandle(Rc<dyn BlockDefinition>);
 
 impl BlockHandle {
+    pub fn inputs(&self) -> Vec<InputPortId> {
+        self.0.inputs()
+    }
+
+    pub fn outputs(&self) -> Vec<OutputPortId> {
+        self.0.outputs()
+    }
+
     pub fn inputs_range(&self) -> Option<RangeInclusive<isize>> {
         let inputs = self.0.inputs();
         let Some(&min) = inputs.iter().min() else {

@@ -1,12 +1,16 @@
 // This is free and unencumbered software released into the public domain.
 
-use super::{Channel, Inputs, ONESHOT, Outputs, UNLIMITED};
-use crate::error::Result;
+use super::{Channel, Inputs, Outputs};
+use crate::{error::Result, io::Message, model::SystemDefinition};
+use alloc::vec::Vec;
 use tokio::task::{AbortHandle, JoinSet};
 
 pub type Subsystem = System;
 
+#[derive(Debug, Default)]
 pub struct System {
+    pub(crate) inputs: Vec<Inputs<Message>>,
+    pub(crate) outputs: Vec<Outputs<Message>>,
     pub(crate) blocks: JoinSet<Result>,
 }
 
@@ -33,9 +37,7 @@ impl System {
 
     /// Instantiates a new system.
     pub fn new() -> Self {
-        Self {
-            blocks: JoinSet::new(),
-        }
+        Self::default()
     }
 
     pub fn connect<T>(&mut self, inputs: Inputs<T>, outputs: Outputs<T>)
@@ -86,5 +88,37 @@ impl System {
         let block = super::stdout(input);
         self.blocks.spawn(block);
         output
+    }
+}
+
+impl From<&SystemDefinition> for System {
+    fn from(system_definition: &SystemDefinition) -> Self {
+        let mut system = Self::new();
+
+        let input_max = system_definition.inputs_max().unwrap();
+        let input_ids = system_definition.inputs_range().unwrap();
+        let input_count = input_ids.count();
+        system.inputs.resize_with(input_count, Inputs::default);
+
+        let output_min = system_definition.outputs_min().unwrap();
+        let output_ids = system_definition.outputs_range().unwrap();
+        let output_count = output_ids.count();
+        system.outputs.resize_with(output_count, Outputs::default);
+
+        for ((output_id, input_id), _) in &system_definition.connections {
+            // TODO: support multiple connections to the same input port
+            let channel = Channel::<Message>::bounded(1);
+            let output_index = output_id.index() - output_min.index();
+            let input_index = input_id.index() - input_max.index();
+            system.outputs[output_index] = channel.tx;
+            system.inputs[input_index] = channel.rx;
+        }
+
+        // TODO: schedule system.blocks
+        for _block in &system_definition.blocks {
+            //system.blocks.spawn(block);
+        }
+
+        system
     }
 }

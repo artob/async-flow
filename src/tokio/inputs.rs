@@ -7,13 +7,25 @@ use core::any::TypeId;
 use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Receiver;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub enum InputPortState<T> {
     #[default]
     Unconnected,
     Connected(Receiver<PortEvent<T>>),
     Disconnected(Receiver<PortEvent<T>>),
     Closed,
+}
+
+impl<T> core::fmt::Debug for InputPortState<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use InputPortState::*;
+        match self {
+            Unconnected => f.write_str("Unconnected"),
+            Connected(_) => f.write_str("Connected"),
+            Disconnected(_) => f.write_str("Disconnected"),
+            Closed => f.write_str("Closed"),
+        }
+    }
 }
 
 impl<T> Into<RecvError> for &InputPortState<T> {
@@ -53,9 +65,7 @@ impl<T: 'static, const N: isize> Inputs<T, N> {
 
 impl<T, const N: isize> core::fmt::Debug for Inputs<T, N> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Inputs")
-            //.field("state", &self.state) // TODO
-            .finish()
+        f.debug_tuple("Inputs").field(&self.state).finish()
     }
 }
 

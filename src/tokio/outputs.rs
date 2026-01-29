@@ -7,13 +7,25 @@ use core::any::TypeId;
 use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Sender;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub enum OutputPortState<T> {
     #[default]
     Unconnected,
     Connected(Sender<PortEvent<T>>),
     Disconnected,
     Closed,
+}
+
+impl<T> core::fmt::Debug for OutputPortState<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use OutputPortState::*;
+        match self {
+            Unconnected => f.write_str("Unconnected"),
+            Connected(_) => f.write_str("Connected"),
+            Disconnected => f.write_str("Disconnected"),
+            Closed => f.write_str("Closed"),
+        }
+    }
 }
 
 impl<T> Into<SendError> for &OutputPortState<T> {
@@ -53,9 +65,7 @@ impl<T: 'static, const N: isize> Outputs<T, N> {
 
 impl<T, const N: isize> core::fmt::Debug for Outputs<T, N> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Outputs")
-            //.field("state", &self.state) // TODO
-            .finish()
+        f.debug_tuple("Outputs").field(&self.state).finish()
     }
 }
 
