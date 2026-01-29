@@ -1,14 +1,14 @@
 // This is free and unencumbered software released into the public domain.
 
-use super::{BlockDefinition, InputPortId, OutputPortId, PortIdSet, SystemBuilder};
+use super::{BlockDefinition, InputPortId, OutputPortId, PortIdMap, PortIdSet, SystemBuilder};
 use alloc::{collections::BTreeMap, rc::Rc, vec::Vec};
 use core::{any::TypeId, fmt::Debug, ops::RangeInclusive};
 
 /// A system definition.
 #[derive(Clone, Default)]
 pub struct SystemDefinition {
-    pub inputs: BTreeMap<InputPortId, TypeId>,
-    pub outputs: BTreeMap<OutputPortId, TypeId>,
+    pub inputs: PortIdMap<InputPortId, TypeId>,
+    pub outputs: PortIdMap<OutputPortId, TypeId>,
     pub blocks: Vec<BlockHandle>,
     pub connections: BTreeMap<(OutputPortId, InputPortId), TypeId>,
 }

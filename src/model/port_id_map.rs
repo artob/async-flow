@@ -1,45 +1,40 @@
 // This is free and unencumbered software released into the public domain.
 
-use alloc::{collections::BTreeSet, vec::Vec};
+use alloc::collections::BTreeMap;
 use core::{fmt::Debug, ops::RangeInclusive};
 
-/// A set of port IDs.
+/// A map of port IDs to arbitrary values.
 #[derive(Clone)]
-pub struct PortIdSet<K>(BTreeSet<K>)
+pub struct PortIdMap<K, V>(BTreeMap<K, V>)
 where
-    K: AsRef<isize>;
+    K: AsRef<isize>,
+    V: Debug;
 
-impl<K: AsRef<isize>> Default for PortIdSet<K> {
+impl<K: AsRef<isize>, V: Debug> Default for PortIdMap<K, V> {
     fn default() -> Self {
-        Self(BTreeSet::default())
+        Self(BTreeMap::default())
     }
 }
 
-impl<K: AsRef<isize> + Copy + Ord> From<&Vec<K>> for PortIdSet<K> {
-    fn from(input: &Vec<K>) -> Self {
-        Self(BTreeSet::<K>::from_iter(input.iter().cloned()))
-    }
-}
-
-impl<K: AsRef<isize> + Ord> PortIdSet<K> {
+impl<K: AsRef<isize> + Ord, V: Debug> PortIdMap<K, V> {
     pub fn new() -> Self {
-        Self(BTreeSet::new())
+        Self(BTreeMap::new())
     }
 
     pub fn first(&self) -> Option<&K> {
-        self.0.first()
+        self.0.first_key_value().map(|(k, _)| k)
     }
 
     pub fn last(&self) -> Option<&K> {
-        self.0.last()
+        self.0.last_key_value().map(|(k, _)| k)
     }
 
-    pub fn insert(&mut self, id: K) -> bool {
-        self.0.insert(id)
+    pub fn insert(&mut self, id: K, value: V) -> bool {
+        self.0.insert(id, value).is_none()
     }
 
     pub fn contains(&self, id: K) -> bool {
-        self.0.contains(&id)
+        self.0.contains_key(&id)
     }
 
     pub fn len(&self) -> usize {
@@ -50,12 +45,12 @@ impl<K: AsRef<isize> + Ord> PortIdSet<K> {
         self.0.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &K> {
+    pub fn iter(&self) -> alloc::collections::btree_map::Iter<'_, K, V> {
         self.0.iter()
     }
 }
 
-impl<K: AsRef<isize> + Copy + Ord> PortIdSet<K> {
+impl<K: AsRef<isize> + Copy + Ord, V: Debug> PortIdMap<K, V> {
     pub fn range(&self) -> Option<RangeInclusive<K>> {
         let Some(&min) = self.first() else {
             return None;
@@ -67,10 +62,10 @@ impl<K: AsRef<isize> + Copy + Ord> PortIdSet<K> {
     }
 }
 
-impl<K: AsRef<isize>> Debug for PortIdSet<K> {
+impl<K: AsRef<isize>, V: Debug> Debug for PortIdMap<K, V> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_list()
-            .entries(&self.0.iter().map(|id| id.as_ref()).collect::<Vec<_>>())
+        f.debug_map()
+            .entries(self.0.iter().map(|(k, v)| (k.as_ref(), v)))
             .finish()
     }
 }

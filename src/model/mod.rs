@@ -15,6 +15,9 @@ pub use port_direction::*;
 mod port_id;
 pub use port_id::*;
 
+mod port_id_map;
+pub use port_id_map::*;
+
 mod port_id_set;
 pub use port_id_set::*;
 
