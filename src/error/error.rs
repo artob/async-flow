@@ -38,3 +38,10 @@ impl From<serde_json::Error> for Error {
         Error::Other(Box::new(value))
     }
 }
+
+#[cfg(feature = "sqlx")]
+impl From<sqlx::Error> for Error {
+    fn from(value: sqlx::Error) -> Self {
+        Error::Other(Box::new(value))
+    }
+}
