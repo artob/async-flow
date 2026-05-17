@@ -1,9 +1,11 @@
 // This is free and unencumbered software released into the public domain.
 
-/// cargo run --example basic
+use async_flow::Channel;
+
+/// cargo run --example channel
 #[tokio::main(flavor = "current_thread")]
 pub async fn main() {
-    let (outputs, mut inputs) = async_flow::Channel::bounded(1).into_inner();
+    let (outputs, mut inputs) = Channel::<&str>::bounded(1).into_inner();
 
     tokio::spawn(async move {
         outputs.send("value1").await.unwrap();
