@@ -52,9 +52,8 @@ sets, including `--no-default-features`, `--no-default-features --features tokio
 and `--all-features`. Distinguish existing failures from regressions.
 
 ## Known gaps — recheck when touched; update when fixed
-- `--no-default-features` fails because `SystemDefinition::prepare` references
-  Tokio unconditionally. `--all-features` fails in Flume implementations and
-  Tokio serial-scheduler imports. Default checks pass; Clippy emits warnings.
+- Flume-enabled builds, including `--all-features`, fail in unfinished Flume
+  implementations. CI covers non-Flume feature sets. Clippy emits warnings.
 - Graph preparation panics on empty graphs and does not schedule blocks.
   Blocking send/recv methods are `todo!()`.
 - `Channel::oneshot` only sets buffer capacity to one; cardinality is not

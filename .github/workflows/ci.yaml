@@ -12,6 +12,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  check-features:
+    name: Features (${{ matrix.features || 'none' }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Flume is unfinished; exercise the supported configurations here.
+        features:
+          - ""
+          - "std"
+          - "tokio"
+          - "std,tokio"
+          - "std,tokio,serial"
+          - "std,tokio,parallel"
+          - "all"
+          - "all,std,serde,sqlx,unstable"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check library without dev-dependency feature unification
+        run: cargo check --locked --lib --no-default-features --features "${{ matrix.features }}"
+      - name: Build enabled examples
+        run: cargo build --locked --examples --no-default-features --features "${{ matrix.features }}"
+      - name: Run tests and doctests
+        run: cargo test --locked --no-default-features --features "${{ matrix.features }}"
   build-ubuntu:
     name: Build on Ubuntu
     runs-on: ubuntu-latest

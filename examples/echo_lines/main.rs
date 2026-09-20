@@ -1,6 +1,6 @@
 // This is free and unencumbered software released into the public domain.
 
-use async_flow::{Result, System};
+use async_flow::{Result, tokio::System};
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn main() -> Result {

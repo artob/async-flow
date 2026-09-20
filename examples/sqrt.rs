@@ -1,6 +1,9 @@
 // This is free and unencumbered software released into the public domain.
 
-use async_flow::{Inputs, Outputs, Result, System};
+use async_flow::{
+    Result,
+    tokio::{Inputs, Outputs, System},
+};
 
 /// cargo run --example sqrt
 #[tokio::main(flavor = "current_thread")]

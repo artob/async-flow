@@ -1,6 +1,9 @@
 // This is free and unencumbered software released into the public domain.
 
-use async_flow::{Channel, Outputs, Result};
+use async_flow::{
+    Result,
+    tokio::{Channel, Outputs},
+};
 
 /// cargo run --example fib
 #[tokio::main(flavor = "current_thread")]

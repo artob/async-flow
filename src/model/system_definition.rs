@@ -19,7 +19,16 @@ impl SystemDefinition {
         SystemBuilder::new()
     }
 
-    /// Prepares this system definition for execution.
+    /// Prepares this system definition for execution with Tokio.
+    ///
+    /// Requires the `tokio` feature. Currently this constructs port wiring but
+    /// does not schedule blocks.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either port range is empty or a connection references a port
+    /// outside the system's port ranges.
+    #[cfg(feature = "tokio")]
     pub fn prepare(&self) -> crate::tokio::System {
         self.into()
     }

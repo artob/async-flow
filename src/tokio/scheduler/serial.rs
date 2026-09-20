@@ -1,6 +1,9 @@
 // This is free and unencumbered software released into the public domain.
 
-use crate::{Channel, Inputs, Outputs, Scheduler};
+use crate::{
+    Scheduler,
+    tokio::{Channel, Inputs, Outputs},
+};
 use tokio::{
     runtime::{Builder, Runtime},
     task::LocalSet,

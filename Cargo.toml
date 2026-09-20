@@ -52,3 +52,23 @@ tokio-stream = { version = "0.1", default-features = false, optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.49", default-features = false, features = ["time"] }
+
+[[example]]
+name = "channel"
+path = "examples/channel.rs"
+required-features = ["tokio"]
+
+[[example]]
+name = "echo_lines"
+path = "examples/echo_lines/main.rs"
+required-features = ["tokio", "std"]
+
+[[example]]
+name = "fib"
+path = "examples/fib.rs"
+required-features = ["tokio"]
+
+[[example]]
+name = "sqrt"
+path = "examples/sqrt.rs"
+required-features = ["tokio", "std"]

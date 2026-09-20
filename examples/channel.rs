@@ -1,6 +1,6 @@
 // This is free and unencumbered software released into the public domain.
 
-use async_flow::Channel;
+use async_flow::tokio::Channel;
 
 /// cargo run --example channel
 #[tokio::main(flavor = "current_thread")]
