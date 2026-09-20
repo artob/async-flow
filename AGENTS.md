@@ -55,10 +55,10 @@ and `--all-features`. Distinguish existing failures from regressions.
 - `--no-default-features` fails because `SystemDefinition::prepare` references
   Tokio unconditionally. `--all-features` fails in Flume implementations and
   Tokio serial-scheduler imports. Default checks pass; Clippy emits warnings.
-- `System::execute` discards block errors. Graph preparation panics on empty
-  graphs and does not schedule blocks. Blocking send/recv methods are `todo!()`.
+- Graph preparation panics on empty graphs and does not schedule blocks.
+  Blocking send/recv methods are `todo!()`.
 - `Channel::oneshot` only sets buffer capacity to one; cardinality is not
   enforced. `UNLIMITED` is not an unbounded-buffer constructor.
-- `tests/` and `benches/` contain placeholders; existing tests are doctests.
+- `tests/tokio_system.rs` covers system execution/shutdown; `benches/` is a placeholder.
 - `rust-version` is commented out; the locked SQLx dependency tree includes
   ICU crates requiring Rust 1.86, above the advertised MSRV.

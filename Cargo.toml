@@ -49,3 +49,6 @@ serde_json = { version = "1", default-features = false, features = ["alloc"], op
 sqlx = { version = "0.8", default-features = false, optional = true }
 tokio = { version = "1.49", default-features = false, features = ["macros", "rt", "sync"], optional = true }
 tokio-stream = { version = "0.1", default-features = false, optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.49", default-features = false, features = ["time"] }
