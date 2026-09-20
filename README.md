@@ -1,7 +1,7 @@
 # Async-Flow
 
 [![License](https://img.shields.io/badge/license-Public%20Domain-blue.svg)](https://unlicense.org)
-[![Compatibility](https://img.shields.io/badge/rust-1.85%2B-blue)](https://blog.rust-lang.org/2025/02/20/Rust-1.85.0/)
+[![Compatibility](https://img.shields.io/badge/rust-1.97%2B-blue)](https://github.com/rust-lang/rust/releases/tag/1.97.0)
 [![Package](https://img.shields.io/crates/v/async-flow)](https://crates.io/crates/async-flow)
 [![Documentation](https://img.shields.io/docsrs/async-flow?label=docs.rs)](https://docs.rs/async-flow)
 [![Featured](https://img.shields.io/badge/awesome-fbp-lightgrey)](https://github.com/artob/awesome-fbp)
@@ -39,7 +39,7 @@ reusable, interconnected blocks that process arbitrary messages.
 
 ## 🛠️ Prerequisites
 
-- [Rust](https://rust-lang.org) 1.85+ (2024 edition)
+- [Rust](https://rust-lang.org) 1.97+ (2024 edition)
 
 ## ⬇️ Installation
 

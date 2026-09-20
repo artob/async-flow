@@ -1,6 +1,6 @@
 # Working on async-flow
 
-Rust 2024 library for async flow-based programming. Advertised MSRV: 1.85;
+Rust 2024 library for async flow-based programming. MSRV: 1.97;
 verify dependency compatibility when changing features or dependencies.
 
 ## Code map
@@ -60,5 +60,3 @@ and `--all-features`. Distinguish existing failures from regressions.
 - `Channel::oneshot` only sets buffer capacity to one; cardinality is not
   enforced. `UNLIMITED` is not an unbounded-buffer constructor.
 - `tests/tokio_system.rs` covers system execution/shutdown; `benches/` is a placeholder.
-- `rust-version` is commented out; the locked SQLx dependency tree includes
-  ICU crates requiring Rust 1.86, above the advertised MSRV.
