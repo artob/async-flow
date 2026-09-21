@@ -1,17 +1,25 @@
 // This is free and unencumbered software released into the public domain.
 
 /// A port's possible states (either unconnected, connected, disconnected, or closed).
+///
+/// Disconnection and buffer exhaustion are distinct: a disconnected input may
+/// still have readable events or outstanding permits. Backend APIs define the
+/// precise draining and EOF semantics.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum PortState {
+    /// No connection has been attached to the endpoint.
     #[default]
     Unconnected,
 
+    /// The endpoint has an open transport connection.
     Connected,
 
+    /// The connection no longer accepts ordinary sends; buffered events may remain.
     Disconnected,
 
+    /// This endpoint was explicitly closed.
     Closed,
 }
 

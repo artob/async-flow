@@ -15,12 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - System definitions retain explicit registrations in `registered_inputs` and
   `registered_outputs`. Struct literals must include these fields or use
   `..Default::default()`.
+- Tokio inputs treat a received `Disconnect` event as terminal EOF, discard
+  trailing events, and disconnect all senders. `Connect` remains informational.
+  Graceful input disconnection drains accepted events and waits for outstanding
+  Tokio permits; output closure remains handle-local.
 
 ### Added
 
 - Backend-neutral graph validation for port IDs, block ownership, endpoint
   registration, output connection uniqueness, and message-type consistency.
 - Optional per-port message-type metadata on `BlockDefinition`.
+- `InputPortState::Ended` records receipt of a terminal disconnect marker and
+  maps to `PortState::Disconnected`. It releases the receiver, so raw receiver
+  access through `AsRef`/`AsMut` is no longer available after that marker.
+- Bounded port lifecycle, backpressure, sender-clone, and cancellation tests,
+  including outstanding-permit and payload-drop behavior.
 
 ### Fixed
 
@@ -29,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Graph preparation handles empty, one-sided, manually registered, and sparse-ID
   graphs using dense port storage. Unsupported fan-in and non-`Message`
   connections return explicit errors instead of being silently miswired.
+- Tokio `Port` trait implementations now forward buffer-capacity queries to
+  their concrete endpoints.
 
 ## 0.1.5 - 2026-01-27
 

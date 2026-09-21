@@ -4,12 +4,17 @@ use crate::error::SendError;
 use alloc::boxed::Box;
 use core::any::TypeId;
 
+/// A sending interface for message payloads of type `T`.
 #[async_trait::async_trait]
 pub trait OutputPort<T: Send + 'static> {
+    /// Returns the Rust type ID of the message payload.
     fn type_id(&self) -> TypeId {
         TypeId::of::<T>()
     }
 
+    /// Sends a message according to the backend's delivery and backpressure rules.
+    ///
+    /// See the backend for error, payload ownership, and cancellation guarantees.
     async fn send(&self, message: T) -> Result<(), SendError>;
 
     // TODO: send_event

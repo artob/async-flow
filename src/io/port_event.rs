@@ -4,6 +4,11 @@
 ///
 /// `T` is the message payload; connect and disconnect events carry control
 /// information. Endpoint APIs determine how these events affect port state.
+///
+/// In the Tokio backend, `Connect` is informational. Receiving `Disconnect`
+/// ends the connection, discards subsequent buffered events, and makes future
+/// receives return EOF. Sending that marker does not synchronously close the
+/// transport. Endpoint construction and dropping do not synthesize either event.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]

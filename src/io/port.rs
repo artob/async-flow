@@ -13,6 +13,8 @@ pub trait Port<T: Send>: MaybeNamed + MaybeLabeled {
     /// If the port had an open connection, it will be disconnected.
     /// If the port was already closed, no further action is taken.
     /// There is no facility to reopen a port once it has been closed.
+    /// Closing an output handle need not close other handles sharing its
+    /// connection. Consult the backend for buffer retention and draining rules.
     fn close(&mut self);
 
     /// The dataflow direction of this port.

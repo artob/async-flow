@@ -37,8 +37,10 @@ verify dependency compatibility when changing features or dependencies.
   headers, and `.rustfmt.toml`.
 - Input IDs are negative, output IDs positive, zero invalid. The builder
   permits each output only one connection.
-- Tokio input `disconnect()` retains buffered events; `close()` discards them.
-  Spawning system tasks requires an active Tokio runtime; `execute()` joins them.
+- Tokio input `disconnect()` drains accepted events; `close()` discards them.
+  `Connect` is informational; receiving `Disconnect` terminates the connection
+  and discards trailing events. Output `close()` affects only that handle.
+- Spawning system tasks requires an active Tokio runtime; `execute()` joins them.
 - Aim for rustdoc on every public symbol; document new/changed APIs, including
   lifecycle, errors, panics, feature/runtime requirements, and useful examples.
   Prefer module/type rustdoc over README additions; expand README only when
@@ -71,5 +73,5 @@ and `--all-features`. Distinguish existing failures from regressions.
   methods are `todo!()`.
 - `Channel::oneshot` only sets buffer capacity to one; cardinality is not
   enforced. `UNLIMITED` is not an unbounded-buffer constructor.
-- `tests/` covers graph validation and system execution/shutdown; `benches/`
-  is a placeholder.
+- `tests/` covers graph validation, port lifecycle/backpressure/cancellation, and
+  system execution/shutdown; `benches/` is a placeholder.

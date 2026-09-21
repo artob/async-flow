@@ -14,6 +14,11 @@ pub const ONESHOT: isize = 1;
 /// `tx` and `rx` are the runtime port endpoints. The channel carries
 /// [`PortEvent<T>`] values: message payloads of type `T` and connection-control
 /// events.
+///
+/// Channels created by [`bounded`](Self::bounded) or [`oneshot`](Self::oneshot)
+/// have connected, initially empty endpoints. No connect event is inserted.
+/// See [`Inputs`] and [`Outputs`] for draining, terminal markers, sender-clone
+/// lifetime, and cancellation semantics.
 #[derive(Debug, Default)]
 pub struct Channel<T, const N: isize = UNLIMITED> {
     pub tx: Outputs<T, N>,
@@ -34,6 +39,13 @@ impl<T, const N: isize> Channel<T, N> {
     }
 
     /// Creates a bounded connection.
+    ///
+    /// Capacity counts queued events and reserved permits, including control
+    /// events. It is independent of the message cardinality marker.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `buffer` is zero or exceeds Tokio's supported semaphore capacity.
     pub fn bounded(buffer: usize) -> Channel<T, UNLIMITED> {
         Channel::from(mpsc::channel(buffer))
     }
