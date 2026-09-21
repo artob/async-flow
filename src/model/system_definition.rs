@@ -6,6 +6,7 @@ use super::{
 };
 use crate::Cardinality;
 use alloc::{
+    borrow::Cow,
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
     vec::Vec,
@@ -44,6 +45,12 @@ pub struct SystemDefinition {
     /// Multiple declarations on a port are intersected with block metadata.
     /// Missing declarations impose no constraint. Entries must refer to declared ports.
     pub cardinalities: BTreeMap<PortId, Vec<Cardinality>>,
+    /// Checked Tokio constructors captured from typed connections and exports.
+    ///
+    /// Raw metadata edits can use `SystemBuilder::register_message_type` or
+    /// insert `ChannelFactory::of::<T>()`; preparation verifies map keys.
+    #[cfg(feature = "tokio")]
+    pub channel_factories: BTreeMap<TypeId, crate::tokio::ChannelFactory>,
 }
 
 impl SystemDefinition {
@@ -82,18 +89,32 @@ impl SystemDefinition {
     /// Requires the `tokio` feature but not an active runtime. Storage is
     /// proportional to the number of declared ports, not the range of their IDs.
     /// Empty systems and definitions with only inputs or only outputs are supported.
-    /// Starting processes from block definitions is not implemented yet;
-    /// unconnected ports remain placeholders.
+    /// Each block must have been registered with `register_executable`. Factories
+    /// bind scoped runtime endpoints and construct owned, unpolled futures. No
+    /// process starts until `System::execute()` is awaited in a Tokio runtime.
+    /// Preparation is repeatable; each call creates fresh channels and futures.
+    /// Unconnected ports remain placeholders.
     /// Prepared connections enforce the intersection of their endpoint bounds;
     /// unconnected placeholders retain their declared bounds as well.
     ///
     /// # Errors
     ///
-    /// Returns a validation error for a malformed graph. The current Tokio
-    /// preparation also rejects fan-in and connections whose declared message
-    /// type is not the concrete [`crate::Message`] alias. This is a limitation of
-    /// system preparation; generic runtime ports can carry other message types.
-    /// Validation and backend checks finish before any channels are allocated.
+    /// Returns errors for malformed graphs, missing or incorrect channel/process
+    /// factories, internally connected exports, and unsuccessful port bindings.
+    /// Typed connections/exports retain constructors for `Send + 'static` payloads;
+    /// raw type metadata requires explicit constructor registration (`Message`
+    /// has a built-in fallback). Exports are boundary-only: inputs expose external
+    /// senders and outputs external receivers, obtained from the prepared system.
+    /// All validation and binding completes before any future is polled.
+    /// On failure, already-created futures and endpoints are dropped.
+    ///
+    /// Fan-in uses one capacity-one queue per producer and fair input-side polling.
+    /// Disconnect markers terminate only their source. Input cardinality constrains
+    /// the aggregate; producer minimums reserve slots within a finite shared budget.
+    ///
+    /// # Panics
+    ///
+    /// User metadata or factory callbacks may panic. Preparation does not catch them.
     ///
     /// # Examples
     ///
@@ -115,7 +136,22 @@ impl SystemDefinition {
     }
 
     pub(crate) fn push_block<T: BlockDefinition + 'static>(&mut self, block: &Rc<T>) {
-        self.blocks.push(BlockHandle(Rc::clone(block) as _));
+        self.blocks.push(BlockHandle {
+            definition: Rc::clone(block) as _,
+            #[cfg(feature = "tokio")]
+            executable: None,
+        });
+    }
+
+    #[cfg(feature = "tokio")]
+    pub(crate) fn push_executable<T: crate::tokio::ExecutableBlock + 'static>(
+        &mut self,
+        block: &Rc<T>,
+    ) {
+        self.blocks.push(BlockHandle {
+            definition: Rc::clone(block) as _,
+            executable: Some(Rc::clone(block) as _),
+        });
     }
 
     /// Returns the numerically smallest declared input ID.
@@ -175,30 +211,37 @@ impl SystemDefinition {
 
         let mut block_ports = BTreeSet::new();
         for block in &self.blocks {
-            for id in block.inputs() {
+            let inputs = block.inputs();
+            let outputs = block.outputs();
+            for &id in &inputs {
                 ports.declare(id.into())?;
                 if !block_ports.insert(PortId::Input(id)) {
                     return Err(SystemValidationError::DuplicatePort(id.into()));
                 }
-                if let Some(type_id) = block.0.input_type(id) {
+                if let Some(type_id) = block.definition.input_type(id) {
                     ports.constrain(id.into(), type_id)?;
                 }
-                if let Some(cardinality) = block.0.input_cardinality(id) {
+                if let Some(cardinality) = block.definition.input_cardinality(id) {
                     ports.constrain_cardinality(id.into(), cardinality)?;
                 }
             }
-            for id in block.outputs() {
+            for &id in &outputs {
                 ports.declare(id.into())?;
                 if !block_ports.insert(PortId::Output(id)) {
                     return Err(SystemValidationError::DuplicatePort(id.into()));
                 }
-                if let Some(type_id) = block.0.output_type(id) {
+                if let Some(type_id) = block.definition.output_type(id) {
                     ports.constrain(id.into(), type_id)?;
                 }
-                if let Some(cardinality) = block.0.output_cardinality(id) {
+                if let Some(cardinality) = block.definition.output_cardinality(id) {
                     ports.constrain_cardinality(id.into(), cardinality)?;
                 }
             }
+            #[cfg(feature = "tokio")]
+            ports.blocks.push(ValidatedBlockPorts {
+                inputs: inputs.into_iter().collect(),
+                outputs: outputs.into_iter().collect(),
+            });
         }
 
         for (&id, &type_id) in self.inputs.iter() {
@@ -272,6 +315,14 @@ pub(crate) struct ValidatedPorts {
     pub(crate) outputs: BTreeMap<OutputPortId, Option<TypeId>>,
     pub(crate) cardinalities: BTreeMap<PortId, Cardinality>,
     pub(crate) connection_cardinalities: BTreeMap<InputPortId, Cardinality>,
+    #[cfg(feature = "tokio")]
+    pub(crate) blocks: Vec<ValidatedBlockPorts>,
+}
+
+#[cfg(feature = "tokio")]
+pub(crate) struct ValidatedBlockPorts {
+    pub(crate) inputs: BTreeSet<InputPortId>,
+    pub(crate) outputs: BTreeSet<OutputPortId>,
 }
 
 impl ValidatedPorts {
@@ -383,19 +434,28 @@ impl Debug for SystemDefinition {
 
 /// A shared handle to a block definition in a system's structural graph.
 #[derive(Clone)]
-pub struct BlockHandle(Rc<dyn BlockDefinition>);
+pub struct BlockHandle {
+    definition: Rc<dyn BlockDefinition>,
+    #[cfg(feature = "tokio")]
+    pub(crate) executable: Option<Rc<dyn crate::tokio::ExecutableBlock>>,
+}
 
 impl BlockHandle {
+    /// Returns the block's name from its definition.
+    pub fn name(&self) -> Cow<'_, str> {
+        self.definition.name()
+    }
+
     pub fn inputs(&self) -> Vec<InputPortId> {
-        self.0.inputs()
+        self.definition.inputs()
     }
 
     pub fn outputs(&self) -> Vec<OutputPortId> {
-        self.0.outputs()
+        self.definition.outputs()
     }
 
     pub fn inputs_range(&self) -> Option<RangeInclusive<isize>> {
-        let inputs = self.0.inputs();
+        let inputs = self.definition.inputs();
         let Some(&min) = inputs.iter().min() else {
             return None;
         };
@@ -406,7 +466,7 @@ impl BlockHandle {
     }
 
     pub fn outputs_range(&self) -> Option<RangeInclusive<isize>> {
-        let outputs = self.0.outputs();
+        let outputs = self.definition.outputs();
         let Some(&min) = outputs.iter().min() else {
             return None;
         };
@@ -419,9 +479,9 @@ impl BlockHandle {
 
 impl Debug for BlockHandle {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let inputs = PortIdSet::from(&self.0.inputs());
-        let outputs = PortIdSet::from(&self.0.outputs());
-        f.debug_struct(&self.0.name())
+        let inputs = PortIdSet::from(&self.definition.inputs());
+        let outputs = PortIdSet::from(&self.definition.outputs());
+        f.debug_struct(&self.definition.name())
             .field("inputs", &inputs)
             .field("outputs", &outputs)
             .finish()

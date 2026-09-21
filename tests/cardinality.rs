@@ -113,11 +113,10 @@ fn repeated_constraints_are_intersected_instead_of_overwritten() {
     let mut builder = SystemBuilder::new();
     builder.register_input(&input);
     builder
-        .export_input(PortExport {
-            id: input.id(),
-            type_id: TypeId::of::<u8>(),
-            cardinality: Some(Cardinality::from_limits(3, 2)),
-        })
+        .export_input(
+            PortExport::new(input.id(), TypeId::of::<u8>())
+                .with_cardinality(Cardinality::from_limits(3, 2)),
+        )
         .unwrap();
     assert!(matches!(
         builder.build().validate(),

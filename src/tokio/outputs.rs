@@ -96,6 +96,12 @@ impl<T> Into<PortState> for &OutputPortState<T> {
 /// Controls do not spend quota. Sends started after exhaustion fail; concurrent
 /// in-flight controls may still be queued and are discarded after the last payload.
 ///
+/// Prepared fan-in outputs have both producer-specific limits and a shared input
+/// budget. Producer minimums reserve slots before extras are accepted; a fast
+/// producer cannot spend another's reserved slots. A send that cannot fit the
+/// allocation returns `FanInBudgetExhausted`. Clones share the same producer
+/// identity. Its disconnect marker terminates only that source connection.
+///
 /// # Raw channel access
 ///
 /// Raw conversions and `AsRef`/`AsMut` exist only for the default `Outputs<T>`
@@ -104,6 +110,7 @@ impl<T> Into<PortState> for &OutputPortState<T> {
 /// cloning or replacement from bypassing or resetting a quota.
 /// For unconstrained ports, access requires a retained sender and otherwise
 /// panics. Raw reservations follow Tokio's permit rules.
+/// Fan-in source endpoints also reject raw access when cardinality is unlimited.
 ///
 /// ```compile_fail
 /// use async_flow::tokio::Channel;
@@ -262,7 +269,7 @@ impl<T, const N: isize, const MIN: isize> Outputs<T, N, MIN> {
         match self.state {
             Connected(ref tx) => {
                 self.quota.check()?;
-                if self.quota.bounds.max().is_none() {
+                if self.quota.bounds.max().is_none() && !self.quota.is_grouped() {
                     return Ok(tx.send(event).await?);
                 }
                 // Poll quota exhaustion first without using a std-only macro.
@@ -281,6 +288,7 @@ impl<T, const N: isize, const MIN: isize> Outputs<T, N, MIN> {
                     })
                     .await?
                 };
+                let _group_guard = self.quota.lock_group().await;
                 // No await after quota commitment: cancellation cannot spend a
                 // message allowance without enqueueing its payload.
                 if event.is_message() {
@@ -309,7 +317,7 @@ impl<T, const N: isize, const MIN: isize> Outputs<T, N, MIN> {
 impl<T> AsRef<Sender<PortEvent<T>>> for Outputs<T> {
     fn as_ref(&self) -> &Sender<PortEvent<T>> {
         assert!(
-            self.quota.bounds.is_unconstrained(),
+            self.quota.bounds.is_unconstrained() && !self.quota.is_grouped(),
             "raw access is disabled for constrained ports"
         );
         use OutputPortState::*;
@@ -323,7 +331,7 @@ impl<T> AsRef<Sender<PortEvent<T>>> for Outputs<T> {
 impl<T> AsMut<Sender<PortEvent<T>>> for Outputs<T> {
     fn as_mut(&mut self) -> &mut Sender<PortEvent<T>> {
         assert!(
-            self.quota.bounds.is_unconstrained(),
+            self.quota.bounds.is_unconstrained() && !self.quota.is_grouped(),
             "raw access is disabled for constrained ports"
         );
         use OutputPortState::*;

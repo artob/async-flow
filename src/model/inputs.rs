@@ -102,7 +102,7 @@ impl<T, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
     }
 }
 
-impl<T: 'static, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
+impl<T: Send + 'static, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
     for PortExport<InputPortId>
 {
     fn from(port: &Inputs<T, MAX, MIN>) -> Self {
@@ -110,11 +110,13 @@ impl<T: 'static, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
             id: port.id(),
             type_id: port.type_id(),
             cardinality: Some(Inputs::<T, MAX, MIN>::message_cardinality()),
+            #[cfg(feature = "tokio")]
+            channel_factory: Some(crate::tokio::ChannelFactory::of::<T>()),
         }
     }
 }
 
-impl<T: 'static, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
+impl<T: Send + 'static, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
     for PortExport<PortId>
 {
     fn from(port: &Inputs<T, MAX, MIN>) -> Self {
@@ -122,6 +124,8 @@ impl<T: 'static, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
             id: port.id().into(),
             type_id: port.type_id(),
             cardinality: Some(Inputs::<T, MAX, MIN>::message_cardinality()),
+            #[cfg(feature = "tokio")]
+            channel_factory: Some(crate::tokio::ChannelFactory::of::<T>()),
         }
     }
 }

@@ -5,6 +5,21 @@ pub use channel::*;
 
 mod quota;
 
+mod channel_factory;
+pub use channel_factory::*;
+
+mod executable_block;
+pub use executable_block::*;
+
+mod runtime_ports;
+pub use runtime_ports::BlockPorts;
+
+mod port_binding_error;
+pub use port_binding_error::*;
+
+mod merged_inputs;
+pub use merged_inputs::MergedInputs;
+
 mod input;
 pub use input::*;
 

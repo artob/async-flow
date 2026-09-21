@@ -62,6 +62,37 @@ impl SystemBuilder {
         block
     }
 
+    /// Registers a block definition with its reusable Tokio process factory.
+    ///
+    /// Requires `tokio`. Registration does not create or start a process;
+    /// preparation creates an unpolled future, and execution starts it.
+    #[cfg(feature = "tokio")]
+    pub fn register_executable<T: crate::tokio::ExecutableBlock + 'static>(
+        &mut self,
+        block: T,
+    ) -> Rc<T> {
+        let block = Rc::new(block);
+        self.system.push_executable(&block);
+        for input in block.inputs() {
+            self.registered_inputs.insert(input);
+        }
+        for output in block.outputs() {
+            self.registered_outputs.insert(output);
+        }
+        block
+    }
+
+    /// Registers a Tokio channel constructor for raw `TypeId` connections or exports.
+    ///
+    /// Typed `connect` and descriptor exports register their types automatically.
+    /// This operation requires `tokio` but no active runtime.
+    #[cfg(feature = "tokio")]
+    pub fn register_message_type<T: Send + 'static>(&mut self) {
+        self.system
+            .channel_factories
+            .insert(TypeId::of::<T>(), crate::tokio::ChannelFactory::of::<T>());
+    }
+
     /// Registers an input or output port with the system under construction.
     /// Descriptor references preserve cardinality; raw IDs impose no constraint.
     pub fn register_port(&mut self, input: impl Into<PortRegistration<PortId>>) {
@@ -121,6 +152,8 @@ impl SystemBuilder {
             id: input,
             type_id,
             cardinality,
+            #[cfg(feature = "tokio")]
+            channel_factory,
         } = input.into();
         match input {
             PortId::Input(id) => self
@@ -128,6 +161,8 @@ impl SystemBuilder {
                     id,
                     type_id,
                     cardinality,
+                    #[cfg(feature = "tokio")]
+                    channel_factory,
                 })
                 .map(|_| ()),
             PortId::Output(id) => self
@@ -135,6 +170,8 @@ impl SystemBuilder {
                     id,
                     type_id,
                     cardinality,
+                    #[cfg(feature = "tokio")]
+                    channel_factory,
                 })
                 .map(|_| ()),
         }?;
@@ -150,11 +187,17 @@ impl SystemBuilder {
             id: input,
             type_id,
             cardinality,
+            #[cfg(feature = "tokio")]
+            channel_factory,
         } = input.into();
         if !self.registered_inputs.contains(input) {
             return Err(SystemBuildError::UnregisteredInput(input));
         }
         self.system.inputs.insert(input, type_id);
+        #[cfg(feature = "tokio")]
+        if let Some(factory) = channel_factory {
+            self.system.channel_factories.insert(type_id, factory);
+        }
         self.record_cardinality(input.into(), cardinality);
         Ok(input)
     }
@@ -168,11 +211,17 @@ impl SystemBuilder {
             id: output,
             type_id,
             cardinality,
+            #[cfg(feature = "tokio")]
+            channel_factory,
         } = output.into();
         if !self.registered_outputs.contains(output) {
             return Err(SystemBuildError::UnregisteredOutput(output));
         }
         self.system.outputs.insert(output, type_id);
+        #[cfg(feature = "tokio")]
+        if let Some(factory) = channel_factory {
+            self.system.channel_factories.insert(type_id, factory);
+        }
         self.record_cardinality(output.into(), cardinality);
         Ok(output)
     }
@@ -183,7 +232,7 @@ impl SystemBuilder {
     /// is checked by definition validation after the full set of producers is known.
     /// Returns `true` for a new connection; reconnecting an output is an error.
     pub fn connect<
-        T: 'static,
+        T: Send + 'static,
         const OUT_MAX: isize,
         const OUT_MIN: isize,
         const IN_MAX: isize,
@@ -194,6 +243,8 @@ impl SystemBuilder {
         input: &Inputs<T, IN_MAX, IN_MIN>,
     ) -> Result<bool, SystemBuildError> {
         let inserted = self.connect_ports(output.id(), input.id(), TypeId::of::<T>())?;
+        #[cfg(feature = "tokio")]
+        self.register_message_type::<T>();
         self.record_cardinality(
             output.id().into(),
             Some(Outputs::<T, OUT_MAX, OUT_MIN>::message_cardinality()),

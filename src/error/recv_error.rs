@@ -5,6 +5,16 @@ use thiserror::Error;
 /// A receive failure, including premature termination of a required stream.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
 pub enum RecvError {
+    /// A fan-in producer ended below its negotiated minimum.
+    #[error("producer {output} supplied {received} messages; expected at least {minimum}")]
+    ProducerCardinalityUnderflow {
+        /// The producer's output port.
+        output: crate::model::OutputPortId,
+        /// The producer's required minimum.
+        minimum: usize,
+        /// Payloads actually received from that producer before it ended.
+        received: usize,
+    },
     /// A backend could not receive a message.
     #[error("RecvError")]
     Unavailable,

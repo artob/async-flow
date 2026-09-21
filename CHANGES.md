@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Definition preparation requires executable registration for blocks, creates
+  fresh unpolled process futures, and starts them in `System::execute()`. Explicit
+  `System::spawn()` still starts tasks immediately. Untaken boundary endpoints
+  are dropped before startup; callers must drive taken endpoints concurrently.
+- With `alloc`, `Message` now uses `valuand::Value<Box<dyn Any + Send + Sync>>`
+  so it can cross runtime threads. Erased non-sendable values are no longer accepted.
+- Typed builder connections and descriptor exports require `Send + 'static`
+  payloads and retain Tokio constructors. `PortExport` adds a Tokio-gated factory
+  field; use `PortExport::new(id, type_id).with_cardinality(bounds)` for raw exports.
+  `SystemDefinition` adds a Tokio-gated `channel_factories` map.
+- Merged inputs consume source-local disconnect markers and continue receiving
+  other producers. Raw access is prohibited on merged/grouped endpoints even
+  when message cardinality is unlimited.
+
 - Raised the minimum supported Rust version from 1.85 to 1.97.
 - `SystemDefinition::prepare()` now returns `Result<System, SystemPrepareError>`;
   `System::try_from(&definition)` replaces the infallible conversion.
@@ -36,6 +50,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tokio `ExecutableBlock`, `ProcessFuture`, `BlockPorts`, checked channel factories,
+  and typed external boundary accessors. Process factories remain attached to
+  block handles across definition clones/reordering. Prepared systems are `Send`.
+- Typed, fair fan-in with one bounded queue per source, per-source FIFO ordering,
+  producer-specific cardinality checks, and shared-budget minimum reservations.
+- Preparation/binding errors for missing factories, type/ownership/cardinality
+  mismatches, unclaimed connected ports, and internally connected exports.
+  `FanInBudgetExhausted` and `ProducerCardinalityUnderflow` report fan-in failures.
+- The `defined_system` example demonstrates typed executable factories and fan-in.
+
 - Backend-neutral graph validation for port IDs, block ownership, endpoint
   registration, output connection uniqueness, and message-type consistency.
 - Optional per-port message-type metadata on `BlockDefinition`.
@@ -57,11 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Definitions now execute registered block processes and support arbitrary
+  registered sendable payload types and fan-in. The old `UnsupportedFanIn` and
+  `UnsupportedMessageType` preparation errors are replaced by factory/binding errors.
+
 - Fixed backend-neutral builds and feature-gated README doctests.
 - Declared example feature requirements and qualified Tokio backend imports.
-- Graph preparation handles empty, one-sided, manually registered, and sparse-ID
-  graphs using dense port storage. Unsupported fan-in and non-`Message`
-  connections return explicit errors instead of being silently miswired.
+- System preparation handles empty, one-sided, manually registered, and sparse-ID
+  definitions with storage proportional to the number of actual ports.
 - Tokio `Port` trait implementations now forward buffer-capacity queries to
   their concrete endpoints.
 - One-shot connections enforce a shared maximum of one payload. `Connection`
