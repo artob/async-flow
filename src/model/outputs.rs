@@ -8,12 +8,15 @@ use core::{
     sync::atomic::{AtomicIsize, Ordering},
 };
 
-/// A one-shot output port of type `T`.
+/// An output-port descriptor with a declared maximum of one message of type `T`.
 ///
 /// Note that `Output` doesn't implement `Copy`, whereas `Input` does.
 pub type Output<T> = Outputs<T, 1, 0>;
 
-/// An output port of type `T`.
+/// An output-port descriptor for messages of type `T` in a system definition.
+///
+/// This identifies a connection point and declares its message cardinality.
+/// Runtime backends provide the sending endpoint separately.
 ///
 /// Note that `Outputs` doesn't implement `Copy`, whereas `Inputs` does.
 #[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -46,7 +49,9 @@ impl<T, const MAX: isize, const MIN: isize> Outputs<T, MAX, MIN> {
         self.0
     }
 
-    /// Returns the cardinality of this connection.
+    /// Returns the declared lower and upper bounds on messages for this port.
+    ///
+    /// These bounds describe message cardinality, not the number of connections.
     pub fn cardinality() -> (Bound<usize>, Bound<usize>) {
         assert!(MIN >= 0);
         assert!(MAX >= -1);

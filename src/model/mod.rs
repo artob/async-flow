@@ -1,5 +1,11 @@
 // This is free and unencumbered software released into the public domain.
 
+//! Structural definitions of systems, blocks, and ports.
+//!
+//! A system's graph records its blocks and their port connections. The port
+//! descriptors in this module identify connection points; runtime backends
+//! provide the endpoints that exchange messages and the tasks that execute blocks.
+
 mod block_definition;
 pub use block_definition::*;
 
@@ -26,3 +32,6 @@ pub use system_definition::*;
 
 mod system_builder;
 pub use system_builder::*;
+
+mod system_validation_error;
+pub use system_validation_error::*;

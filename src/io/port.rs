@@ -3,7 +3,10 @@
 use super::{PortDirection, PortState};
 use dogma::{MaybeLabeled, MaybeNamed};
 
-/// The common interface for ports, whether for input or output.
+/// The common runtime interface for a block's input or output connection point.
+///
+/// Blocks exchange messages through ports. This interface provides optional
+/// names and labels; backend implementations provide the runtime endpoints.
 pub trait Port<T: Send>: MaybeNamed + MaybeLabeled {
     /// Closes this port without dropping it, returning immediately.
     ///

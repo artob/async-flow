@@ -24,6 +24,11 @@ pub enum Error {
     #[error("{0}")]
     Join(#[from] tokio::task::JoinError),
 
+    /// System preparation failed before any block processes were started.
+    #[cfg(feature = "tokio")]
+    #[error("{0}")]
+    Prepare(#[from] crate::tokio::SystemPrepareError),
+
     #[cfg(feature = "std")]
     #[error("{0}")]
     Stdio(#[from] std::io::Error),

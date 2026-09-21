@@ -3,6 +3,9 @@
 use crate::Scheduler;
 use tokio::runtime::{Builder, Runtime};
 
+/// A multithreaded Tokio runtime wrapper for scheduling block processes as tasks.
+///
+/// Requires the `tokio`, `std`, and `parallel` features.
 #[derive(Debug)]
 pub struct ParallelScheduler {
     runtime: Runtime,

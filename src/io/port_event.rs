@@ -1,12 +1,18 @@
 // This is free and unencumbered software released into the public domain.
 
-/// A port's state transition events (either connect, message, or disconnect).
+/// An event carried by a connection: a message or a connection-control event.
+///
+/// `T` is the message payload; connect and disconnect events carry control
+/// information. Endpoint APIs determine how these events affect port state.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum PortEvent<T> {
+    /// Signals a connection event.
     Connect,
+    /// Carries one message of type `T`.
     Message(T),
+    /// Signals a disconnection event.
     Disconnect,
 }
 

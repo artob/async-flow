@@ -9,6 +9,11 @@ use tokio::sync::mpsc;
 pub const UNLIMITED: isize = -1;
 pub const ONESHOT: isize = 1;
 
+/// A bounded Tokio transport connecting an output port to an input port.
+///
+/// `tx` and `rx` are the runtime port endpoints. The channel carries
+/// [`PortEvent<T>`] values: message payloads of type `T` and connection-control
+/// events.
 #[derive(Debug, Default)]
 pub struct Channel<T, const N: isize = UNLIMITED> {
     pub tx: Outputs<T, N>,
@@ -20,7 +25,10 @@ impl<T, const N: isize> Channel<T, N> {
         (Self::bounded(1), Self::bounded(1))
     }
 
-    /// Creates a one-shot connection.
+    /// Creates a capacity-one connection with the one-shot cardinality marker.
+    ///
+    /// This currently bounds buffer capacity only; it does not limit the total
+    /// number of messages sent over the connection.
     pub fn oneshot() -> Channel<T, ONESHOT> {
         Channel::from(mpsc::channel(1))
     }

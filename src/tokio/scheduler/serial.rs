@@ -9,6 +9,10 @@ use tokio::{
     task::LocalSet,
 };
 
+/// A current-thread Tokio runtime wrapper with a local task set for block processes.
+///
+/// Processes are tasks; single-threaded scheduling can still interleave their
+/// executions when they yield. Requires the `tokio`, `std`, and `serial` features.
 #[derive(Debug)]
 pub struct SerialScheduler {
     tasks: Option<LocalSet>,

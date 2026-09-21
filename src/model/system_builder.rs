@@ -45,16 +45,18 @@ impl SystemBuilder {
         Self::default()
     }
 
-    /// Registers an instantiated block with the system under construction.
+    /// Registers a block definition and its ports with the system under construction.
+    ///
+    /// Registration records structural metadata; it does not start a block process.
     pub fn register<T: BlockDefinition + 'static>(&mut self, block: T) -> Rc<T> {
         let block: Rc<T> = Rc::new(block);
         self.system.push_block(&block);
 
         for input in block.inputs() {
-            self.register_input(input);
+            self.registered_inputs.insert(input);
         }
         for output in block.outputs() {
-            self.register_output(output);
+            self.registered_outputs.insert(output);
         }
 
         block
@@ -69,15 +71,23 @@ impl SystemBuilder {
     }
 
     /// Registers an input port with the system under construction.
+    ///
+    /// The registration is retained by the definition, including for ports
+    /// that are neither exported nor connected. Repeated registration is a no-op.
     pub fn register_input(&mut self, input: impl Into<InputPortId>) {
         let input = input.into();
         self.registered_inputs.insert(input);
+        self.system.registered_inputs.insert(input);
     }
 
     /// Registers an output port with the system under construction.
+    ///
+    /// The registration is retained by the definition, including for ports
+    /// that are neither exported nor connected. Repeated registration is a no-op.
     pub fn register_output(&mut self, output: impl Into<OutputPortId>) {
         let output = output.into();
         self.registered_outputs.insert(output);
+        self.system.registered_outputs.insert(output);
     }
 
     /// Exports an input or output port registered with the system under
@@ -176,6 +186,11 @@ impl SystemBuilder {
     }
 
     /// Builds the system under construction.
+    ///
+    /// This retains explicit port registrations but does not perform full graph
+    /// validation. Call [`SystemDefinition::validate`] to check block ownership,
+    /// endpoint membership, and type consistency. Tokio preparation validates
+    /// the definition again before allocating channels.
     pub fn build(self) -> SystemDefinition {
         self.system
     }

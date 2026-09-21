@@ -3,10 +3,22 @@
 Rust 2024 library for async flow-based programming. MSRV: 1.97;
 verify dependency compatibility when changing features or dependencies.
 
+## Terminology
+- Follow `README.md`'s glossary and the **Flux Theory** column of the
+  [FBP terminology cross-reference](https://github.com/flux-doctrine/awesome-fbp#concepts).
+  Classical → project: network → system; subnet → subsystem; component → block;
+  information packet (IP) → message; initial information packet (IIP) → property.
+- A system comprises connected blocks; blocks exchange messages through ports.
+  A process is a block's execution, represented here by a Tokio task. Keep
+  blocks, processes/tasks, and runtime threads distinct.
+- A graph represents a system's structure. Distinguish domain messages from
+  the concrete `Message` alias. Do not infer classical FBP runtime/ownership
+  rules from its terminology.
+
 ## Code map
 - `src/io/`, `src/error/`: backend-neutral traits, events, states, errors;
   reexported at the crate root.
-- `src/model/`: graph definitions, signed port IDs, builder. Its `Inputs` and
+- `src/model/`: system/block definitions, signed port IDs, builder. Its `Inputs` and
   `Outputs` are descriptors, distinct from runtime ports.
 - `src/tokio/`: runtime ports, bounded MPSC channels carrying `PortEvent<T>`,
   `System`/`JoinSet`, schedulers, stdio blocks.
@@ -54,8 +66,10 @@ and `--all-features`. Distinguish existing failures from regressions.
 ## Known gaps — recheck when touched; update when fixed
 - Flume-enabled builds, including `--all-features`, fail in unfinished Flume
   implementations. CI covers non-Flume feature sets. Clippy emits warnings.
-- Graph preparation panics on empty graphs and does not schedule blocks.
-  Blocking send/recv methods are `todo!()`.
+- System preparation validates definitions but does not start block processes;
+  fan-in and non-`Message` connections return preparation errors. Blocking send/recv
+  methods are `todo!()`.
 - `Channel::oneshot` only sets buffer capacity to one; cardinality is not
   enforced. `UNLIMITED` is not an unbounded-buffer constructor.
-- `tests/tokio_system.rs` covers system execution/shutdown; `benches/` is a placeholder.
+- `tests/` covers graph validation and system execution/shutdown; `benches/`
+  is a placeholder.

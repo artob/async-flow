@@ -1,13 +1,26 @@
 // This is free and unencumbered software released into the public domain.
 
-use super::{Channel, Inputs, Outputs};
-use crate::{error::Result, io::Message, model::SystemDefinition};
-use alloc::vec::Vec;
+use super::{Channel, Inputs, Outputs, SystemPrepareError};
+use crate::{
+    error::Result,
+    io::Message,
+    model::{InputPortId, OutputPortId, SystemDefinition},
+};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    vec::Vec,
+};
+use core::any::TypeId;
 use tokio::task::{AbortHandle, JoinSet};
 
+/// A system used within another system; currently an alias for [`System`].
 pub type Subsystem = System;
 
-/// A collection of Tokio tasks connected through ports.
+/// A Tokio execution context for a system of connected blocks.
+///
+/// A system comprises blocks that exchange messages through ports. A block's
+/// execution is a process, represented here by a Tokio task. Runtime threads
+/// drive those tasks.
 ///
 /// Tasks are scheduled when spawned, rather than when [`execute`](Self::execute) is
 /// called. Spawning requires an active Tokio runtime, which must remain running
@@ -17,6 +30,8 @@ pub type Subsystem = System;
 pub struct System {
     pub(crate) inputs: Vec<Inputs<Message>>,
     pub(crate) outputs: Vec<Outputs<Message>>,
+    pub(crate) input_indices: BTreeMap<InputPortId, usize>,
+    pub(crate) output_indices: BTreeMap<OutputPortId, usize>,
     pub(crate) blocks: JoinSet<Result>,
 }
 
@@ -69,10 +84,11 @@ impl System {
         });
     }
 
-    /// Spawns a block on the active Tokio runtime and returns its abort handle.
+    /// Spawns a block process as a Tokio task and returns its abort handle.
     ///
-    /// The block is scheduled immediately. [`execute`](Self::execute) observes its
-    /// result; an aborted block is reported as [`crate::Error::Join`].
+    /// The `task` future represents an execution of a block and is scheduled
+    /// immediately on the active Tokio runtime. [`execute`](Self::execute)
+    /// observes its result; an aborted task is reported as [`crate::Error::Join`].
     ///
     /// # Panics
     ///
@@ -85,27 +101,27 @@ impl System {
         self.blocks.spawn(task)
     }
 
-    /// Waits for all blocks to finish, stopping on the first observed failure.
+    /// Waits for the system's spawned processes, stopping on the first observed failure.
     ///
-    /// Returns `Ok(())` when every block succeeds, including for an empty system.
+    /// Returns `Ok(())` when every process succeeds, including for an empty system.
     /// Tasks have already been spawned; their Tokio runtime must remain running
     /// while this future is awaited.
     ///
     /// # Errors
     ///
-    /// Returns the first error observed while joining blocks, in completion
-    /// order rather than spawn order. Block errors are returned unchanged; task
+    /// Returns the first error observed while joining tasks, in completion
+    /// order rather than spawn order. Process errors are returned unchanged; task
     /// panics and cancellations are returned as [`crate::Error::Join`].
     ///
-    /// On failure, all remaining blocks are aborted and joined before the error
+    /// On failure, all remaining tasks are aborted and joined before the error
     /// is returned. Additional errors or panics during shutdown are ignored.
     /// Cancellation is cooperative: a task that does not yield can prevent
     /// shutdown from completing. Buffered messages may be discarded on failure.
     ///
     /// # Cancellation
     ///
-    /// Dropping this future aborts remaining blocks without waiting for cleanup.
-    /// Await it to completion to ensure that all blocks have been joined.
+    /// Dropping this future aborts remaining tasks without waiting for cleanup.
+    /// Await it to completion to ensure that all tasks have been joined.
     ///
     /// # Examples
     ///
@@ -158,34 +174,208 @@ impl System {
     }
 }
 
-impl From<&SystemDefinition> for System {
-    fn from(system_definition: &SystemDefinition) -> Self {
+/// Validates and prepares a definition as described by [`SystemDefinition::prepare`].
+impl TryFrom<&SystemDefinition> for System {
+    type Error = SystemPrepareError;
+
+    fn try_from(definition: &SystemDefinition) -> Result<Self, Self::Error> {
+        let ports = definition.validated_ports()?;
+        let mut connected_inputs = BTreeSet::new();
+        for (&(output, input), &type_id) in &definition.connections {
+            if !connected_inputs.insert(input) {
+                return Err(SystemPrepareError::UnsupportedFanIn(input));
+            }
+            if type_id != TypeId::of::<Message>() {
+                return Err(SystemPrepareError::UnsupportedMessageType {
+                    port: output.into(),
+                    type_id,
+                });
+            }
+        }
+
         let mut system = Self::new();
-
-        let input_max = system_definition.inputs_max().unwrap();
-        let input_ids = system_definition.inputs_range().unwrap();
-        let input_count = input_ids.count();
-        system.inputs.resize_with(input_count, Inputs::default);
-
-        let output_min = system_definition.outputs_min().unwrap();
-        let output_ids = system_definition.outputs_range().unwrap();
-        let output_count = output_ids.count();
-        system.outputs.resize_with(output_count, Outputs::default);
-
-        for ((output_id, input_id), _) in &system_definition.connections {
-            // TODO: support multiple connections to the same input port
-            let channel = Channel::<Message>::bounded(1);
-            let output_index = output_id.index() - output_min.index();
-            let input_index = input_id.index() - input_max.index();
-            system.outputs[output_index] = channel.tx;
-            system.inputs[input_index] = channel.rx;
-        }
-
-        // TODO: schedule system.blocks
-        for _block in &system_definition.blocks {
-            //system.blocks.spawn(block);
-        }
-
+        system.input_indices = ports
+            .inputs
+            .keys()
+            .enumerate()
+            .map(|(index, &id)| (id, index))
+            .collect();
+        system.output_indices = ports
+            .outputs
+            .keys()
+            .enumerate()
+            .map(|(index, &id)| (id, index))
+            .collect();
         system
+            .inputs
+            .resize_with(ports.inputs.len(), Inputs::default);
+        system
+            .outputs
+            .resize_with(ports.outputs.len(), Outputs::default);
+
+        // Membership and single-producer/single-consumer constraints were checked
+        // before allocation. Index only the validated, dense layout, never raw IDs.
+        for &(output, input) in definition.connections.keys() {
+            let channel = Channel::<Message>::bounded(1);
+            system.outputs[system.output_indices[&output]] = channel.tx;
+            system.inputs[system.input_indices[&input]] = channel.rx;
+        }
+        Ok(system)
+    }
+}
+
+#[cfg(test)]
+mod preparation_tests {
+    use super::*;
+    use crate::{
+        PortEvent, PortState,
+        model::{SystemBuilder, SystemValidationError},
+    };
+    use core::time::Duration;
+
+    fn graph() -> SystemDefinition {
+        let mut builder = SystemBuilder::new();
+        builder.register_input(InputPortId(-1));
+        builder.register_output(OutputPortId(1));
+        let mut graph = builder.build();
+        graph
+            .connections
+            .insert((OutputPortId(1), InputPortId(-1)), TypeId::of::<Message>());
+        graph
+    }
+
+    #[test]
+    fn empty_and_one_sided_graphs_prepare_without_a_runtime() {
+        let empty = System::try_from(&SystemDefinition::default()).unwrap();
+        assert!(empty.inputs.is_empty());
+        assert!(empty.outputs.is_empty());
+        for inputs in [true, false] {
+            let mut builder = SystemBuilder::new();
+            if inputs {
+                builder.register_input(InputPortId(isize::MIN));
+            } else {
+                builder.register_output(OutputPortId(isize::MAX));
+            }
+            let system = builder.build().prepare().unwrap();
+            assert_eq!(system.inputs.len(), usize::from(inputs));
+            assert_eq!(system.outputs.len(), usize::from(!inputs));
+            if inputs {
+                assert_eq!(system.inputs[0].state(), PortState::Unconnected);
+            } else {
+                assert_eq!(system.outputs[0].state(), PortState::Unconnected);
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn sparse_extreme_ids_use_dense_storage_and_keep_connections_distinct() {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let mut definition = graph();
+            definition.registered_inputs.insert(InputPortId(isize::MIN));
+            definition
+                .registered_outputs
+                .insert(OutputPortId(isize::MAX));
+            definition.connections.clear();
+            definition.connections.insert(
+                (OutputPortId(1), InputPortId(isize::MIN)),
+                TypeId::of::<Message>(),
+            );
+            definition.connections.insert(
+                (OutputPortId(isize::MAX), InputPortId(-1)),
+                TypeId::of::<Message>(),
+            );
+            let mut system = definition.prepare().unwrap();
+            assert_eq!(system.inputs.len(), 2);
+            assert_eq!(system.outputs.len(), 2);
+            assert_eq!(system.input_indices.len(), 2);
+            assert_eq!(system.output_indices.len(), 2);
+
+            system.outputs[system.output_indices[&OutputPortId(1)]]
+                .send_event(PortEvent::Connect)
+                .await
+                .unwrap();
+            system.outputs[system.output_indices[&OutputPortId(isize::MAX)]]
+                .send(Message::default())
+                .await
+                .unwrap();
+            system.outputs.clear();
+            let first = system.input_indices[&InputPortId(isize::MIN)];
+            let second = system.input_indices[&InputPortId(-1)];
+            assert!(matches!(
+                system.inputs[first].recv_event().await.unwrap(),
+                Some(PortEvent::Connect)
+            ));
+            assert!(matches!(
+                system.inputs[second].recv_event().await.unwrap(),
+                Some(PortEvent::Message(_))
+            ));
+            assert!(system.inputs[first].recv_event().await.unwrap().is_none());
+            assert!(system.inputs[second].recv_event().await.unwrap().is_none());
+        })
+        .await
+        .expect("prepared channels must drain without hanging");
+    }
+
+    #[test]
+    fn fan_in_is_rejected_instead_of_overwriting_a_receiver() {
+        let mut graph = graph();
+        graph.registered_outputs.insert(OutputPortId(2));
+        graph
+            .connections
+            .insert((OutputPortId(2), InputPortId(-1)), TypeId::of::<Message>());
+        graph.validate().unwrap();
+        assert!(matches!(
+            graph.prepare(),
+            Err(SystemPrepareError::UnsupportedFanIn(InputPortId(-1)))
+        ));
+    }
+
+    #[test]
+    fn arbitrary_types_are_not_silently_replaced_with_message() {
+        let mut graph = graph();
+        graph
+            .connections
+            .insert((OutputPortId(1), InputPortId(-1)), TypeId::of::<u8>());
+        graph.validate().unwrap();
+        assert!(
+            matches!(graph.prepare(), Err(SystemPrepareError::UnsupportedMessageType { type_id, .. }) if type_id == TypeId::of::<u8>())
+        );
+    }
+
+    #[test]
+    fn preparation_revalidates_public_fields_after_edits() {
+        let mut graph = graph();
+        graph.validate().unwrap();
+        graph.inputs.insert(InputPortId(-1), TypeId::of::<u8>());
+        let error = graph.prepare().unwrap_err();
+        assert!(matches!(
+            error,
+            SystemPrepareError::InvalidDefinition(SystemValidationError::TypeMismatch {
+                port: crate::model::PortId::Input(InputPortId(-1)),
+                ..
+            })
+        ));
+        assert!(matches!(
+            crate::Error::from(error),
+            crate::Error::Prepare(_)
+        ));
+    }
+
+    #[test]
+    fn an_undeclared_id_inside_the_numeric_range_is_still_invalid() {
+        let mut graph = graph();
+        graph.registered_inputs.insert(InputPortId(-3));
+        graph.connections.clear();
+        graph
+            .connections
+            .insert((OutputPortId(1), InputPortId(-2)), TypeId::of::<Message>());
+        assert!(matches!(
+            graph.prepare(),
+            Err(SystemPrepareError::InvalidDefinition(
+                SystemValidationError::UnregisteredPort(crate::model::PortId::Input(InputPortId(
+                    -2
+                )))
+            ))
+        ));
     }
 }
