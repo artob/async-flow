@@ -434,7 +434,7 @@ mod tests {
 
     #[test]
     fn invalid_ids_are_rejected_in_declarations_exports_and_connections() {
-        // These values can currently also be constructed through deserialization.
+        // Defensive validation still rejects malformed crate-internal values.
         for port in [
             PortId::Input(InputPortId(0)),
             PortId::Input(InputPortId(1)),

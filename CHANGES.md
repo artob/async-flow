@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional per-port message-type metadata on `BlockDefinition`.
 - Validated `Cardinality` ranges, block cardinality metadata, intersected port
   constraints, and aggregate producer-range validation for structural fan-in.
+- Explicit port-ID `magnitude()` accessors and `PortId::from_usize()` for decoding
+  direction-preserving unsigned keys. Existing unsigned conversions retain their
+  meanings: full IDs encode direction, while typed IDs yield local magnitudes.
 - Shared, cancellation-safe sender quotas; finite streams reach EOF at their
   maximum even with live senders. Minimum shortfalls are reported once at EOF or
   a disconnect marker; explicit input closure remains an abort.
@@ -64,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - One-shot connections enforce a shared maximum of one payload. `Connection`
   applies to every channel cardinality. Cloning outputs and creating default
   runtime endpoints no longer require payload `Clone`/`Default` implementations.
+- Port-ID deserialization now rejects zero, wrong-sign, and out-of-range values,
+  including values under contradictory `PortId` tags. Valid signed/newtype and
+  externally tagged representations are preserved.
+- Descriptor ID allocation stops at exhaustion instead of wrapping into invalid
+  or reused IDs; requesting another ID then panics.
 
 ## 0.1.5 - 2026-01-27
 

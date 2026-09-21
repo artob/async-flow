@@ -35,8 +35,10 @@ verify dependency compatibility when changing features or dependencies.
   Root backend reexports exist only when exactly one backend is enabled.
 - Follow private per-type modules with `pub use`, existing public-domain
   headers, and `.rustfmt.toml`.
-- Input IDs are negative, output IDs positive, zero invalid. The builder
-  permits each output only one connection.
+- Input IDs are negative, output IDs positive, zero invalid, including in Serde.
+  `PortId`'s `usize` encoding preserves direction; typed-ID conversions yield
+  magnitudes. `index()` is not a dense runtime index. The builder permits each
+  output only one connection.
 - Cardinality counts lifetime payloads, not controls or buffer slots. Port bounds
   intersect; sender clones share quotas. Raw access requires unconstrained ports,
   including effective limits installed by preparation. `UNLIMITED` is not an

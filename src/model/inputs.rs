@@ -6,7 +6,6 @@ use core::{
     any::{TypeId, type_name},
     marker::PhantomData,
     ops::Bound,
-    sync::atomic::{AtomicIsize, Ordering},
 };
 
 /// An input-port descriptor with a declared maximum of one message of type `T`.
@@ -31,6 +30,12 @@ pub type Input<T> = Inputs<T, 1, 0>;
 /// ```
 ///
 /// Note that `Inputs` implements `Copy`, whereas `Outputs` doesn't.
+///
+/// # Panics
+///
+/// Creating a fresh descriptor panics if the library's shared input-ID sequence is
+/// exhausted. Explicitly constructed or deserialized IDs do not reserve entries
+/// in that sequence.
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Inputs<T, const MAX: isize = -1, const MIN: isize = 0>(InputPortId, PhantomData<T>);
 
@@ -43,9 +48,7 @@ impl<T: 'static, const MAX: isize, const MIN: isize> Inputs<T, MAX, MIN> {
 impl<T, const MAX: isize, const MIN: isize> Default for Inputs<T, MAX, MIN> {
     fn default() -> Self {
         let _ = Self::message_cardinality();
-        static COUNTER: AtomicIsize = AtomicIsize::new(-1);
-        let id = COUNTER.fetch_sub(1, Ordering::AcqRel);
-        Self(InputPortId(id), PhantomData)
+        Self(InputPortId::next(), PhantomData)
     }
 }
 
