@@ -40,13 +40,19 @@ verify dependency compatibility when changing features or dependencies.
   magnitudes. `index()` is not a dense runtime index. The builder permits each
   output only one connection.
 - Cardinality counts lifetime payloads, not controls or buffer slots. Port bounds
-  intersect; sender clones share quotas. Raw access requires unconstrained ports,
-  including effective limits installed by preparation. `UNLIMITED` is not an
-  unbounded-buffer constructor.
+  intersect; sender clones share quotas. Fan-in reserves producer minimums within
+  the aggregate budget. Raw access requires unconstrained, non-grouped ports.
+  `UNLIMITED` is not an unbounded-buffer constructor.
 - Tokio input `disconnect()` drains accepted events; `close()` discards them.
   `Connect` is informational; receiving `Disconnect` terminates the connection
-  and discards trailing events. Output `close()` affects only that handle.
-- Spawning system tasks requires an active Tokio runtime; `execute()` joins them.
+  and discards trailing events. Fan-in consumes source-local disconnect markers;
+  other producers continue. Output `close()` affects only that handle.
+- `register_executable` attaches factories to block handles. `prepare()` needs no
+  runtime and returns unpolled `Send` futures; `execute()` starts them and joins.
+  Explicit `spawn()` starts immediately. Exports must be internally unconnected;
+  take boundary endpoints before execution and drive them concurrently.
+- Typed connections/exports register payload constructors; raw `TypeId` metadata
+  needs `register_message_type`. Missing factories and invalid bindings are errors.
 - Aim for rustdoc on every public symbol; document new/changed APIs, including
   lifecycle, errors, panics, feature/runtime requirements, and useful examples.
   Prefer module/type rustdoc over README additions; expand README only when
@@ -74,8 +80,7 @@ and `--all-features`. Distinguish existing failures from regressions.
 ## Known gaps — recheck when touched; update when fixed
 - Flume-enabled builds, including `--all-features`, fail in unfinished Flume
   implementations. CI covers non-Flume feature sets. Clippy emits warnings.
-- System preparation validates definitions but does not start block processes;
-  fan-in and non-`Message` connections return preparation errors. Blocking send/recv
-  methods are `todo!()`.
+- Blocking send/recv methods are `todo!()`. Prepared connections use capacity-one
+  queues (one per producer in fan-in); buffer configuration is not yet exposed.
 - `tests/` covers graph validation, port lifecycle/backpressure/cancellation, and
   system execution/shutdown; `benches/` is a placeholder.

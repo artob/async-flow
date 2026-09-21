@@ -29,6 +29,16 @@ pub enum Error {
     #[error("{0}")]
     Prepare(#[from] crate::tokio::SystemPrepareError),
 
+    /// A typed runtime boundary could not be bound.
+    #[cfg(feature = "tokio")]
+    #[error("{0}")]
+    Bind(#[from] crate::tokio::PortBindingError),
+
+    /// Prepared processes were executed without an active Tokio runtime.
+    #[cfg(feature = "tokio")]
+    #[error("{0}")]
+    Runtime(#[from] tokio::runtime::TryCurrentError),
+
     #[cfg(feature = "std")]
     #[error("{0}")]
     Stdio(#[from] std::io::Error),

@@ -45,7 +45,7 @@
 //! Backend types live in their backend modules. They are also reexported at the
 //! crate root when exactly one backend is enabled.
 //!
-//! The `channel` and `fib` examples require `tokio`; `echo_lines` and `sqrt`
+//! The `channel` and `fib` examples require `tokio`; `echo_lines`, `sqrt`, and `defined_system`
 //! additionally require `std`. Cargo skips examples whose required features are
 //! disabled when building or testing all examples.
 

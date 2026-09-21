@@ -5,6 +5,13 @@ use thiserror::Error;
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
 #[error("SendError")]
 pub enum SendError {
+    /// The merged input's spare budget is spent; remaining slots are reserved
+    /// for other producers' minimums. No further message from this producer fits.
+    #[error("fan-in input budget of {maximum} messages is allocated")]
+    FanInBudgetExhausted {
+        /// The merged input's effective maximum.
+        maximum: usize,
+    },
     /// The connection has accepted its maximum number of message payloads.
     #[error("message cardinality limit reached: {maximum}")]
     CardinalityExceeded {

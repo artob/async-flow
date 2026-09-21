@@ -10,6 +10,9 @@
 /// receives return EOF. Sending that marker does not synchronously close the
 /// transport. Endpoint construction and dropping do not synthesize either event.
 /// A required message-count shortfall is reported as a receive error at termination.
+/// For a merged Tokio input, each producer has a separate connection: its marker
+/// is consumed by the merger and terminates only that source. Other producers
+/// continue; merged EOF occurs once every source finishes or the input limit is met.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]

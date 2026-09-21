@@ -92,7 +92,10 @@ fn source_only_and_sink_only_block_graphs_validate() {
             if source { Some(1..=1) } else { None }
         );
         #[cfg(feature = "tokio")]
-        graph.prepare().unwrap();
+        assert!(matches!(
+            graph.prepare(),
+            Err(async_flow::tokio::SystemPrepareError::MissingProcessFactory { .. })
+        ));
     }
 }
 
@@ -365,8 +368,16 @@ fn preparation_reads_block_metadata_once() {
     }
 
     let calls = Rc::new(Cell::new(0));
+    impl async_flow::tokio::ExecutableBlock for CountingBlock {
+        fn create_process(
+            &self,
+            _: &mut async_flow::tokio::BlockPorts<'_>,
+        ) -> Result<async_flow::tokio::ProcessFuture, async_flow::tokio::PortBindingError> {
+            Ok(Box::pin(async { Ok(()) }))
+        }
+    }
     let mut builder = SystemBuilder::new();
-    builder.register(CountingBlock(Rc::clone(&calls)));
+    builder.register_executable(CountingBlock(Rc::clone(&calls)));
     let graph = builder.build();
     calls.set(0);
     graph.prepare().unwrap();

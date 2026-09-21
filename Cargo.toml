@@ -72,3 +72,8 @@ required-features = ["tokio"]
 name = "sqrt"
 path = "examples/sqrt.rs"
 required-features = ["tokio", "std"]
+
+[[example]]
+name = "defined_system"
+path = "examples/defined_system.rs"
+required-features = ["tokio", "std"]

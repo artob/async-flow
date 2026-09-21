@@ -1,10 +1,14 @@
 // This is free and unencumbered software released into the public domain.
 
-use super::UNLIMITED;
 use super::quota::Quota;
+use super::{MergedInputs, UNLIMITED};
 use crate::{Cardinality, PortDirection, PortEvent, PortState, error::RecvError};
 use alloc::{borrow::Cow, boxed::Box, sync::Arc};
-use core::any::TypeId;
+use core::{
+    any::TypeId,
+    future::poll_fn,
+    task::{Context, Poll},
+};
 use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Receiver;
 
@@ -21,6 +25,8 @@ pub enum InputPortState<T> {
     Connected(Receiver<PortEvent<T>>),
     /// Retains a closed receiver so accepted events can be drained.
     Disconnected(Receiver<PortEvent<T>>),
+    /// Fairly merges independently bounded producer connections.
+    Merged(Box<MergedInputs<T>>),
     /// Reception has finished; no receiver is retained.
     ///
     /// This is reported as [`PortState::Disconnected`].
@@ -36,6 +42,7 @@ impl<T> core::fmt::Debug for InputPortState<T> {
             Unconnected => f.write_str("Unconnected"),
             Connected(_) => f.write_str("Connected"),
             Disconnected(_) => f.write_str("Disconnected"),
+            Merged(_) => f.write_str("Merged"),
             Ended => f.write_str("Ended"),
             Closed => f.write_str("Closed"),
         }
@@ -61,6 +68,7 @@ impl<T> Into<PortState> for &InputPortState<T> {
                 }
             },
             Disconnected(_) | Ended => PortState::Disconnected,
+            Merged(inputs) => inputs.state(),
             Closed => PortState::Closed,
         }
     }
@@ -82,6 +90,11 @@ impl<T> Into<PortState> for &InputPortState<T> {
 /// - Receiving `Disconnect` through either receive method terminates the whole
 ///   connection, releases the receiver, and discards events after that marker.
 ///   `recv_event` returns the marker once; `recv` returns EOF instead.
+/// - A merged input treats each producer as a separate connection. It consumes
+///   source-local disconnect markers, drops only that source's trailing events,
+///   and continues polling the others fairly. It reports EOF after all sources
+///   finish, or after receiving its aggregate maximum. `disconnect()` gracefully
+///   closes every source; `close()` discards every source queue.
 ///
 /// # Cardinality
 ///
@@ -95,6 +108,8 @@ impl<T> Into<PortState> for &InputPortState<T> {
 /// [`RecvError::CardinalityUnderflow`] once, instead of successful EOF or the
 /// marker. Subsequent receives return `Ok(None)`. A required unconnected input
 /// reports the same shortfall. Explicit `close()` is an abort and skips this check.
+/// Merged inputs additionally report `ProducerCardinalityUnderflow` if one source
+/// ends below its negotiated minimum, even if other sources supplied enough data.
 ///
 /// Successful EOF is terminal: subsequent receives also return `Ok(None)`.
 /// Unconstrained unconnected inputs and explicitly closed inputs return `Ok(None)`.
@@ -112,6 +127,8 @@ impl<T> Into<PortState> for &InputPortState<T> {
 /// graceful draining and after natural EOF. They panic on unconnected or closed
 /// inputs and after a disconnect marker has released the receiver. Reading or
 /// replacing the receiver directly bypasses the port's control-event handling.
+/// Merged inputs and their grouped source endpoints never expose raw access,
+/// even when cardinality is unlimited, because it bypasses merge accounting.
 ///
 /// ```compile_fail
 /// use async_flow::{PortEvent, tokio::Inputs};
@@ -175,13 +192,37 @@ impl<T, const N: isize, const MIN: isize> Inputs<T, N, MIN> {
         }
     }
 
+    pub(crate) fn with_merged(inputs: MergedInputs<T>, bounds: Cardinality) -> Self {
+        let state = if bounds.max() == Some(0) {
+            InputPortState::Ended
+        } else {
+            InputPortState::Merged(Box::new(inputs))
+        };
+        Self {
+            state,
+            quota: Quota::new(bounds),
+            received: 0,
+        }
+    }
+
+    pub(crate) fn received_count(&self) -> usize {
+        self.received
+    }
+
     /// Returns effective lifetime message-count bounds, including negotiated limits.
     pub fn cardinality(&self) -> Cardinality {
         self.quota.bounds
     }
 
     fn finish(&mut self) -> Result<(), RecvError> {
+        let producer_error = match &self.state {
+            InputPortState::Merged(inputs) => inputs.check_minima().err(),
+            _ => None,
+        };
         self.state = InputPortState::Ended;
+        if let Some(error) = producer_error {
+            return Err(error);
+        }
         let minimum = self.quota.bounds.min();
         if self.received < minimum {
             Err(RecvError::CardinalityUnderflow {
@@ -207,7 +248,7 @@ impl<T, const N: isize, const MIN: isize> Inputs<T, N, MIN> {
                 }
                 self.state = Closed;
             },
-            Disconnected(_) | Ended => self.state = Closed,
+            Disconnected(_) | Merged(_) | Ended => self.state = Closed,
             Closed => (), // idempotent
         }
     }
@@ -247,6 +288,10 @@ impl<T, const N: isize, const MIN: isize> Inputs<T, N, MIN> {
                 Disconnected(rx)
             },
             Disconnected(rx) => Disconnected(rx),
+            Merged(mut inputs) => {
+                inputs.disconnect();
+                Merged(inputs)
+            },
             Ended => Ended,
             Closed => Closed,
         })
@@ -275,6 +320,7 @@ impl<T, const N: isize, const MIN: isize> Inputs<T, N, MIN> {
         use InputPortState::*;
         match self.state {
             Connected(ref rx) | Disconnected(ref rx) => rx.is_empty(),
+            Merged(ref inputs) => inputs.is_empty(),
             _ => true,
         }
     }
@@ -288,15 +334,18 @@ impl<T, const N: isize, const MIN: isize> Inputs<T, N, MIN> {
         use InputPortState::*;
         match self.state {
             Connected(ref rx) | Disconnected(ref rx) => Some(rx.capacity()),
+            Merged(ref inputs) => inputs.capacity(false),
             _ => None,
         }
     }
 
     /// Returns the total event-buffer capacity while a receiver is retained.
+    /// Merged inputs sum the capacities of their still-retained source queues.
     pub fn max_capacity(&self) -> Option<usize> {
         use InputPortState::*;
         match self.state {
             Connected(ref rx) | Disconnected(ref rx) => Some(rx.max_capacity()),
+            Merged(ref inputs) => inputs.capacity(true),
             _ => None,
         }
     }
@@ -336,6 +385,8 @@ impl<T, const N: isize, const MIN: isize> Inputs<T, N, MIN> {
     /// # Cancellation
     ///
     /// Cancelling a pending receive does not consume an event.
+    /// On merged inputs it may already have consumed source-local disconnect
+    /// markers before waiting; it does not consume a message payload.
     ///
     /// # Errors
     ///
@@ -343,30 +394,51 @@ impl<T, const N: isize, const MIN: isize> Inputs<T, N, MIN> {
     /// including a disconnect marker or a required unconnected input. The marker
     /// is consumed and trailing events discarded even when a shortfall is reported.
     pub async fn recv_event(&mut self) -> Result<Option<PortEvent<T>>, RecvError> {
+        poll_fn(|cx| self.poll_recv_event(cx)).await
+    }
+
+    pub(crate) fn poll_recv_event(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<PortEvent<T>>, RecvError>> {
         use InputPortState::*;
         let event = match self.state {
-            Connected(ref mut rx) | Disconnected(ref mut rx) => rx.recv().await,
-            Unconnected if self.quota.bounds.min() > 0 => {
-                self.finish()?;
-                return Ok(None);
+            Connected(ref mut rx) | Disconnected(ref mut rx) => match rx.poll_recv(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(event) => event,
             },
-            _ => return Ok(None),
+            Merged(ref mut inputs) => match inputs.poll_next(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(Ok(event)) => event,
+                Poll::Ready(Err(error)) => {
+                    self.state = Ended;
+                    return Poll::Ready(Err(error));
+                },
+            },
+            Unconnected if self.quota.bounds.min() > 0 => {
+                return Poll::Ready(self.finish().map(|_| None));
+            },
+            _ => return Poll::Ready(Ok(None)),
         };
-        match &event {
+        let result = match &event {
             Some(PortEvent::Message(_)) => {
                 // Unbounded streams only need to remember progress up to MIN.
                 if self.quota.bounds.max().is_some() || self.received < self.quota.bounds.min() {
                     self.received += 1;
                 }
                 if self.quota.bounds.max() == Some(self.received) {
-                    self.finish()?;
+                    self.finish()
+                } else {
+                    Ok(())
                 }
             },
-            Some(PortEvent::Disconnect) => self.finish()?,
-            None if !self.quota.bounds.is_unconstrained() => self.finish()?,
-            _ => (),
-        }
-        Ok(event)
+            Some(PortEvent::Disconnect) => self.finish(),
+            None if !self.quota.bounds.is_unconstrained() || matches!(self.state, Merged(_)) => {
+                self.finish()
+            },
+            _ => Ok(()),
+        };
+        Poll::Ready(result.map(|_| event))
     }
 
     /// A placeholder for blocking message reception.
@@ -382,7 +454,9 @@ impl<T, const N: isize, const MIN: isize> Inputs<T, N, MIN> {
 impl<T> AsRef<Receiver<PortEvent<T>>> for Inputs<T> {
     fn as_ref(&self) -> &Receiver<PortEvent<T>> {
         assert!(
-            self.quota.bounds.is_unconstrained(),
+            self.quota.bounds.is_unconstrained()
+                && !self.quota.is_grouped()
+                && !matches!(self.state, InputPortState::Merged(_)),
             "raw access is disabled for constrained ports"
         );
         use InputPortState::*;
@@ -396,7 +470,9 @@ impl<T> AsRef<Receiver<PortEvent<T>>> for Inputs<T> {
 impl<T> AsMut<Receiver<PortEvent<T>>> for Inputs<T> {
     fn as_mut(&mut self) -> &mut Receiver<PortEvent<T>> {
         assert!(
-            self.quota.bounds.is_unconstrained(),
+            self.quota.bounds.is_unconstrained()
+                && !self.quota.is_grouped()
+                && !matches!(self.state, InputPortState::Merged(_)),
             "raw access is disabled for constrained ports"
         );
         use InputPortState::*;
