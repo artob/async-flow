@@ -37,6 +37,10 @@ verify dependency compatibility when changing features or dependencies.
   headers, and `.rustfmt.toml`.
 - Input IDs are negative, output IDs positive, zero invalid. The builder
   permits each output only one connection.
+- Cardinality counts lifetime payloads, not controls or buffer slots. Port bounds
+  intersect; sender clones share quotas. Raw access requires unconstrained ports,
+  including effective limits installed by preparation. `UNLIMITED` is not an
+  unbounded-buffer constructor.
 - Tokio input `disconnect()` drains accepted events; `close()` discards them.
   `Connect` is informational; receiving `Disconnect` terminates the connection
   and discards trailing events. Output `close()` affects only that handle.
@@ -71,7 +75,5 @@ and `--all-features`. Distinguish existing failures from regressions.
 - System preparation validates definitions but does not start block processes;
   fan-in and non-`Message` connections return preparation errors. Blocking send/recv
   methods are `todo!()`.
-- `Channel::oneshot` only sets buffer capacity to one; cardinality is not
-  enforced. `UNLIMITED` is not an unbounded-buffer constructor.
 - `tests/` covers graph validation, port lifecycle/backpressure/cancellation, and
   system execution/shutdown; `benches/` is a placeholder.

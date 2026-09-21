@@ -1,16 +1,17 @@
 // This is free and unencumbered software released into the public domain.
 
 use super::UNLIMITED;
-use crate::{PortDirection, PortEvent, PortState, error::RecvError};
-use alloc::{borrow::Cow, boxed::Box};
+use super::quota::Quota;
+use crate::{Cardinality, PortDirection, PortEvent, PortState, error::RecvError};
+use alloc::{borrow::Cow, boxed::Box, sync::Arc};
 use core::any::TypeId;
 use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Receiver;
 
 /// Storage for a Tokio input endpoint.
 ///
-/// [`Inputs::state`] also observes whether a retained receiver's transport has
-/// closed; this enum records which resources the port owns.
+/// [`Inputs::state`] also observes transport closure and quota exhaustion;
+/// this enum records which resources the port owns.
 #[derive(Default)]
 pub enum InputPortState<T> {
     /// No receiver has been attached.
@@ -20,7 +21,7 @@ pub enum InputPortState<T> {
     Connected(Receiver<PortEvent<T>>),
     /// Retains a closed receiver so accepted events can be drained.
     Disconnected(Receiver<PortEvent<T>>),
-    /// A disconnect event ended the stream and released the receiver.
+    /// Reception has finished; no receiver is retained.
     ///
     /// This is reported as [`PortState::Disconnected`].
     Ended,
@@ -82,36 +83,116 @@ impl<T> Into<PortState> for &InputPortState<T> {
 ///   connection, releases the receiver, and discards events after that marker.
 ///   `recv_event` returns the marker once; `recv` returns EOF instead.
 ///
-/// Both async receive APIs return `Ok(None)` at EOF and on unconnected or closed
-/// inputs. EOF is terminal: subsequent receives also return `Ok(None)`.
-/// Natural EOF and a disconnect marker leave the observable state
+/// # Cardinality
+///
+/// `N` and `MIN` declare lifetime payload bounds; system preparation can install
+/// a narrower effective intersection. [`cardinality`](Self::cardinality) returns
+/// those effective bounds. Reaching the maximum returns the last payload and
+/// ends the input without waiting for sender handles to close. Counts are shared
+/// across calls to `recv`, `recv_event`, and `recv_all`; controls do not count.
+///
+/// Premature EOF or a disconnect marker reports
+/// [`RecvError::CardinalityUnderflow`] once, instead of successful EOF or the
+/// marker. Subsequent receives return `Ok(None)`. A required unconnected input
+/// reports the same shortfall. Explicit `close()` is an abort and skips this check.
+///
+/// Successful EOF is terminal: subsequent receives also return `Ok(None)`.
+/// Unconstrained unconnected inputs and explicitly closed inputs return `Ok(None)`.
+/// Natural EOF, a cardinality limit, and a disconnect marker leave the observable state
 /// [`PortState::Disconnected`]; explicit `close()` sets [`PortState::Closed`].
 ///
 /// # Raw channel access
 ///
-/// `AsRef`/`AsMut` expose the receiver while it is retained, including during
+/// Raw conversions and `AsRef`/`AsMut` exist only for the default `Inputs<T>`
+/// type. Access also checks effective runtime bounds and panics if constrained,
+/// including when system preparation installed limits on a default-typed port.
+/// This prevents raw receives or receiver replacement from resetting counters.
+///
+/// For unconstrained ports these traits expose the receiver while retained, including during
 /// graceful draining and after natural EOF. They panic on unconnected or closed
 /// inputs and after a disconnect marker has released the receiver. Reading or
 /// replacing the receiver directly bypasses the port's control-event handling.
-#[derive(Default)]
-pub struct Inputs<T, const N: isize = UNLIMITED> {
+///
+/// ```compile_fail
+/// use async_flow::{PortEvent, tokio::Inputs};
+/// let (_, raw) = tokio::sync::mpsc::channel::<PortEvent<u8>>(1);
+/// let _ = Inputs::<u8, -1, 1>::from(raw);
+/// ```
+///
+/// ```compile_fail
+/// use async_flow::tokio::Channel;
+/// let input = Channel::<u8>::oneshot().rx;
+/// let _ = input.as_ref();
+/// ```
+pub struct Inputs<T, const N: isize = UNLIMITED, const MIN: isize = 0> {
     pub(crate) state: InputPortState<T>,
+    pub(crate) quota: Arc<Quota>,
+    received: usize,
 }
 
-impl<T: 'static, const N: isize> Inputs<T, N> {
+impl<T, const N: isize, const MIN: isize> Default for Inputs<T, N, MIN> {
+    fn default() -> Self {
+        Self::unconnected(const { Cardinality::from_limits(N, MIN) })
+    }
+}
+
+impl<T: 'static, const N: isize, const MIN: isize> Inputs<T, N, MIN> {
     /// Returns the Rust type ID of message payloads accepted by this input.
     pub fn type_id(&self) -> TypeId {
         TypeId::of::<T>()
     }
 }
 
-impl<T, const N: isize> core::fmt::Debug for Inputs<T, N> {
+impl<T, const N: isize, const MIN: isize> core::fmt::Debug for Inputs<T, N, MIN> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_tuple("Inputs").field(&self.state).finish()
     }
 }
 
-impl<T, const N: isize> Inputs<T, N> {
+impl<T, const N: isize, const MIN: isize> Inputs<T, N, MIN> {
+    pub(crate) fn unconnected(bounds: Cardinality) -> Self {
+        let declared = const { Cardinality::from_limits(N, MIN) };
+        assert_eq!(declared.intersection(bounds), Some(bounds));
+        Self {
+            state: InputPortState::Unconnected,
+            quota: Quota::new(bounds),
+            received: 0,
+        }
+    }
+
+    pub(crate) fn with_receiver(rx: Receiver<PortEvent<T>>, quota: Arc<Quota>) -> Self {
+        let state = if quota.bounds.max() == Some(0) {
+            InputPortState::Ended
+        } else if rx.is_closed() {
+            InputPortState::Disconnected(rx)
+        } else {
+            InputPortState::Connected(rx)
+        };
+        Self {
+            state,
+            quota,
+            received: 0,
+        }
+    }
+
+    /// Returns effective lifetime message-count bounds, including negotiated limits.
+    pub fn cardinality(&self) -> Cardinality {
+        self.quota.bounds
+    }
+
+    fn finish(&mut self) -> Result<(), RecvError> {
+        self.state = InputPortState::Ended;
+        let minimum = self.quota.bounds.min();
+        if self.received < minimum {
+            Err(RecvError::CardinalityUnderflow {
+                minimum,
+                received: self.received,
+            })
+        } else {
+            Ok(())
+        }
+    }
+
     /// Closes this input and discards all buffered events immediately.
     ///
     /// All senders observe a disconnected receiver. Repeated calls are harmless;
@@ -176,10 +257,13 @@ impl<T, const N: isize> Inputs<T, N> {
         PortDirection::Input
     }
 
-    /// Returns the endpoint state, observing transport closure as disconnection.
+    /// Returns the endpoint state, observing closure or exhausted quota as disconnection.
     ///
     /// `Disconnected` does not imply an empty buffer or that EOF is ready.
     pub fn state(&self) -> PortState {
+        if matches!(self.state, InputPortState::Connected(_)) && self.quota.check().is_err() {
+            return PortState::Disconnected;
+        }
         (&self.state).into()
     }
 
@@ -198,8 +282,8 @@ impl<T, const N: isize> Inputs<T, N> {
     /// Returns remaining event-buffer capacity while a receiver is retained.
     ///
     /// Reserved permits also consume capacity. A capacity value on a disconnected
-    /// input does not mean new sends are accepted. Returns `None` after close or
-    /// a disconnect marker, and for an unconnected input.
+    /// input does not mean new sends are accepted. Returns `None` when no receiver
+    /// is retained, including after a terminal marker or cardinality termination.
     pub fn capacity(&self) -> Option<usize> {
         use InputPortState::*;
         match self.state {
@@ -229,8 +313,8 @@ impl<T, const N: isize> Inputs<T, N> {
     ///
     /// # Errors
     ///
-    /// This backend currently reports EOF as `Ok(None)` and does not produce
-    /// receive errors, including on unconnected or closed inputs.
+    /// Reports [`RecvError::CardinalityUnderflow`] once if the stream ends below
+    /// its effective minimum. Explicitly closed inputs return `Ok(None)` instead.
     pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         loop {
             return match self.recv_event().await? {
@@ -245,9 +329,9 @@ impl<T, const N: isize> Inputs<T, N> {
     /// Receives the next event in enqueue order, including control events.
     ///
     /// Connect events do not change port state. A disconnect event is returned
-    /// once and ends receiving through this port: the receiver is
-    /// released, queued trailing events are discarded, and later calls return
-    /// `Ok(None)`. Constructing or dropping endpoints does not synthesize events.
+    /// once unless it violates the minimum cardinality. It ends reception,
+    /// releases the receiver, and discards queued trailing events. Later calls
+    /// return `Ok(None)`. Endpoint construction and dropping synthesize no events.
     ///
     /// # Cancellation
     ///
@@ -255,16 +339,32 @@ impl<T, const N: isize> Inputs<T, N> {
     ///
     /// # Errors
     ///
-    /// This backend currently produces no receive errors. EOF, unconnected, and
-    /// closed inputs are reported as `Ok(None)`.
+    /// Reports [`RecvError::CardinalityUnderflow`] once on premature termination,
+    /// including a disconnect marker or a required unconnected input. The marker
+    /// is consumed and trailing events discarded even when a shortfall is reported.
     pub async fn recv_event(&mut self) -> Result<Option<PortEvent<T>>, RecvError> {
         use InputPortState::*;
         let event = match self.state {
             Connected(ref mut rx) | Disconnected(ref mut rx) => rx.recv().await,
-            _ => None,
+            Unconnected if self.quota.bounds.min() > 0 => {
+                self.finish()?;
+                return Ok(None);
+            },
+            _ => return Ok(None),
         };
-        if matches!(event, Some(PortEvent::Disconnect)) {
-            self.state = Ended;
+        match &event {
+            Some(PortEvent::Message(_)) => {
+                // Unbounded streams only need to remember progress up to MIN.
+                if self.quota.bounds.max().is_some() || self.received < self.quota.bounds.min() {
+                    self.received += 1;
+                }
+                if self.quota.bounds.max() == Some(self.received) {
+                    self.finish()?;
+                }
+            },
+            Some(PortEvent::Disconnect) => self.finish()?,
+            None if !self.quota.bounds.is_unconstrained() => self.finish()?,
+            _ => (),
         }
         Ok(event)
     }
@@ -279,8 +379,12 @@ impl<T, const N: isize> Inputs<T, N> {
     }
 }
 
-impl<T, const N: isize> AsRef<Receiver<PortEvent<T>>> for Inputs<T, N> {
+impl<T> AsRef<Receiver<PortEvent<T>>> for Inputs<T> {
     fn as_ref(&self) -> &Receiver<PortEvent<T>> {
+        assert!(
+            self.quota.bounds.is_unconstrained(),
+            "raw access is disabled for constrained ports"
+        );
         use InputPortState::*;
         match self.state {
             Connected(ref rx) | Disconnected(ref rx) => rx,
@@ -289,8 +393,12 @@ impl<T, const N: isize> AsRef<Receiver<PortEvent<T>>> for Inputs<T, N> {
     }
 }
 
-impl<T, const N: isize> AsMut<Receiver<PortEvent<T>>> for Inputs<T, N> {
+impl<T> AsMut<Receiver<PortEvent<T>>> for Inputs<T> {
     fn as_mut(&mut self) -> &mut Receiver<PortEvent<T>> {
+        assert!(
+            self.quota.bounds.is_unconstrained(),
+            "raw access is disabled for constrained ports"
+        );
         use InputPortState::*;
         match self.state {
             Connected(ref mut rx) | Disconnected(ref mut rx) => rx,
@@ -299,21 +407,20 @@ impl<T, const N: isize> AsMut<Receiver<PortEvent<T>>> for Inputs<T, N> {
     }
 }
 
-impl<T, const N: isize> From<Receiver<PortEvent<T>>> for Inputs<T, N> {
+impl<T> From<Receiver<PortEvent<T>>> for Inputs<T> {
     fn from(input: Receiver<PortEvent<T>>) -> Self {
-        use InputPortState::*;
-        Self {
-            state: if input.is_closed() {
-                Disconnected(input)
-            } else {
-                Connected(input)
-            },
-        }
+        Self::with_receiver(input, Quota::new(Cardinality::UNLIMITED))
     }
 }
 
 #[async_trait::async_trait]
-impl<T: Send + 'static, const N: isize> crate::io::InputPort<T> for Inputs<T, N> {
+impl<T: Send + 'static, const N: isize, const MIN: isize> crate::io::InputPort<T>
+    for Inputs<T, N, MIN>
+{
+    fn disconnect(&mut self) {
+        self.disconnect()
+    }
+
     fn is_empty(&self) -> bool {
         self.is_empty()
     }
@@ -323,7 +430,11 @@ impl<T: Send + 'static, const N: isize> crate::io::InputPort<T> for Inputs<T, N>
     }
 }
 
-impl<T: Send, const N: isize> crate::io::Port<T> for Inputs<T, N> {
+impl<T: Send, const N: isize, const MIN: isize> crate::io::Port<T> for Inputs<T, N, MIN> {
+    fn cardinality(&self) -> Option<Cardinality> {
+        Some(self.cardinality())
+    }
+
     fn close(&mut self) {
         self.close()
     }
@@ -345,13 +456,13 @@ impl<T: Send, const N: isize> crate::io::Port<T> for Inputs<T, N> {
     }
 }
 
-impl<T, const N: isize> MaybeNamed for Inputs<T, N> {
+impl<T, const N: isize, const MIN: isize> MaybeNamed for Inputs<T, N, MIN> {
     fn name(&self) -> Option<Cow<'_, str>> {
         None
     }
 }
 
-impl<T, const N: isize> MaybeLabeled for Inputs<T, N> {
+impl<T, const N: isize, const MIN: isize> MaybeLabeled for Inputs<T, N, MIN> {
     fn label(&self) -> Option<Cow<'_, str>> {
         None
     }

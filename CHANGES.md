@@ -19,12 +19,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trailing events, and disconnect all senders. `Connect` remains informational.
   Graceful input disconnection drains accepted events and waits for outstanding
   Tokio permits; output closure remains handle-local.
+- Tokio `Channel`, `Inputs`, and `Outputs` accept a defaulted `MIN` parameter.
+  `bounded()` and `pair()` preserve their const-generic bounds. Use
+  `Channel::<T>::oneshot()` for zero-or-one messages or
+  `Channel::<T, 1, 1>::bounded(1)` for exactly one required message.
+- Raw Tokio conversions and `AsRef`/`AsMut` implementations are limited to
+  default-typed endpoints. Raw access also rejects effective constrained bounds
+  installed by system preparation, preventing quota bypass/reset.
+- `OutputPort` now extends `Port`; `InputPort` requires `disconnect()`.
+  `RecvError` is now an enum (`Unavailable` replaces its former unit value).
+- Builder registration/export accepts `PortRegistration`/`PortExport` conversions
+  to preserve descriptor bounds; raw IDs and ID/type tuples remain supported.
+  `connect()` infers independent input/output const parameters; explicit
+  turbofish calls must supply those parameters or switch to inference. Definitions add
+  the `cardinalities` field; struct literals can use `..Default::default()`.
 
 ### Added
 
 - Backend-neutral graph validation for port IDs, block ownership, endpoint
   registration, output connection uniqueness, and message-type consistency.
 - Optional per-port message-type metadata on `BlockDefinition`.
+- Validated `Cardinality` ranges, block cardinality metadata, intersected port
+  constraints, and aggregate producer-range validation for structural fan-in.
+- Shared, cancellation-safe sender quotas; finite streams reach EOF at their
+  maximum even with live senders. Minimum shortfalls are reported once at EOF or
+  a disconnect marker; explicit input closure remains an abort.
+- `SendError::CardinalityExceeded`, `RecvError::CardinalityUnderflow`, and
+  effective cardinality queries on concrete ports and `Port` trait objects.
 - `InputPortState::Ended` records receipt of a terminal disconnect marker and
   maps to `PortState::Disconnected`. It releases the receiver, so raw receiver
   access through `AsRef`/`AsMut` is no longer available after that marker.
@@ -40,6 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connections return explicit errors instead of being silently miswired.
 - Tokio `Port` trait implementations now forward buffer-capacity queries to
   their concrete endpoints.
+- One-shot connections enforce a shared maximum of one payload. `Connection`
+  applies to every channel cardinality. Cloning outputs and creating default
+  runtime endpoints no longer require payload `Clone`/`Default` implementations.
 
 ## 0.1.5 - 2026-01-27
 

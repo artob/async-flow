@@ -1,6 +1,7 @@
 // This is free and unencumbered software released into the public domain.
 
-use super::{InputPortId, PortId};
+use super::{InputPortId, PortExport, PortId, PortRegistration};
+use crate::Cardinality;
 use core::{
     any::{TypeId, type_name},
     marker::PhantomData,
@@ -17,6 +18,17 @@ pub type Input<T> = Inputs<T, 1, 0>;
 ///
 /// This identifies a connection point and declares its message cardinality.
 /// Runtime backends provide the receiving endpoint separately.
+/// Invalid const bounds are rejected when constructing or inspecting the descriptor.
+///
+/// ```compile_fail
+/// use async_flow::model::Inputs;
+/// let _ = Inputs::<u8, 0, 1>::default();
+/// ```
+///
+/// ```compile_fail
+/// use async_flow::model::Inputs;
+/// let _ = Inputs::<u8, -1, -1>::default();
+/// ```
 ///
 /// Note that `Inputs` implements `Copy`, whereas `Outputs` doesn't.
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -30,6 +42,7 @@ impl<T: 'static, const MAX: isize, const MIN: isize> Inputs<T, MAX, MIN> {
 
 impl<T, const MAX: isize, const MIN: isize> Default for Inputs<T, MAX, MIN> {
     fn default() -> Self {
+        let _ = Self::message_cardinality();
         static COUNTER: AtomicIsize = AtomicIsize::new(-1);
         let id = COUNTER.fetch_sub(1, Ordering::AcqRel);
         Self(InputPortId(id), PhantomData)
@@ -53,12 +66,59 @@ impl<T, const MAX: isize, const MIN: isize> Inputs<T, MAX, MIN> {
     ///
     /// These bounds describe message cardinality, not the number of connections.
     pub fn cardinality() -> (Bound<usize>, Bound<usize>) {
-        assert!(MIN >= 0);
-        assert!(MAX >= -1);
-        use Bound::*;
-        match (MIN, MAX) {
-            (min, -1) => (Included(min as _), Unbounded),
-            (min, max) => (Included(min as _), Included(max as _)),
+        Self::message_cardinality().bounds()
+    }
+
+    /// Returns validated message-count constraints.
+    ///
+    /// Invalid const-generic bounds are rejected at compile time when used.
+    pub const fn message_cardinality() -> Cardinality {
+        const { Cardinality::from_limits(MAX, MIN) }
+    }
+}
+
+impl<T, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
+    for PortRegistration<InputPortId>
+{
+    fn from(port: &Inputs<T, MAX, MIN>) -> Self {
+        Self {
+            id: port.id(),
+            cardinality: Some(Inputs::<T, MAX, MIN>::message_cardinality()),
+        }
+    }
+}
+
+impl<T, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
+    for PortRegistration<PortId>
+{
+    fn from(port: &Inputs<T, MAX, MIN>) -> Self {
+        Self {
+            id: port.id().into(),
+            cardinality: Some(Inputs::<T, MAX, MIN>::message_cardinality()),
+        }
+    }
+}
+
+impl<T: 'static, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
+    for PortExport<InputPortId>
+{
+    fn from(port: &Inputs<T, MAX, MIN>) -> Self {
+        Self {
+            id: port.id(),
+            type_id: port.type_id(),
+            cardinality: Some(Inputs::<T, MAX, MIN>::message_cardinality()),
+        }
+    }
+}
+
+impl<T: 'static, const MAX: isize, const MIN: isize> From<&Inputs<T, MAX, MIN>>
+    for PortExport<PortId>
+{
+    fn from(port: &Inputs<T, MAX, MIN>) -> Self {
+        Self {
+            id: port.id().into(),
+            type_id: port.type_id(),
+            cardinality: Some(Inputs::<T, MAX, MIN>::message_cardinality()),
         }
     }
 }

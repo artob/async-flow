@@ -1,12 +1,15 @@
 // This is free and unencumbered software released into the public domain.
 
-use crate::error::SendError;
+use crate::{Port, error::SendError};
 use alloc::boxed::Box;
 use core::any::TypeId;
 
 /// A sending interface for message payloads of type `T`.
+///
+/// The [`Port`] supertrait exposes the same lifecycle, capacity, and cardinality
+/// queries available on input trait objects.
 #[async_trait::async_trait]
-pub trait OutputPort<T: Send + 'static> {
+pub trait OutputPort<T: Send + 'static>: Port<T> {
     /// Returns the Rust type ID of the message payload.
     fn type_id(&self) -> TypeId {
         TypeId::of::<T>()

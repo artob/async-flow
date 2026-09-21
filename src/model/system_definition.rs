@@ -4,6 +4,7 @@ use super::{
     BlockDefinition, InputPortId, OutputPortId, PortId, PortIdMap, PortIdSet, SystemBuilder,
     SystemValidationError,
 };
+use crate::Cardinality;
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
@@ -38,6 +39,11 @@ pub struct SystemDefinition {
     ///
     /// Block ports are discovered from `blocks`; they need not be listed here.
     pub registered_outputs: PortIdSet<OutputPortId>,
+    /// Message-count constraints retained from registration, exports, and connections.
+    ///
+    /// Multiple declarations on a port are intersected with block metadata.
+    /// Missing declarations impose no constraint. Entries must refer to declared ports.
+    pub cardinalities: BTreeMap<PortId, Vec<Cardinality>>,
 }
 
 impl SystemDefinition {
@@ -56,12 +62,17 @@ impl SystemDefinition {
     /// connection types. Ports without declared types infer their types from
     /// exports or connections; validation cannot verify undeclared block types.
     /// Each block's port lists and type metadata are read once per validation.
+    /// Cardinality declarations are intersected per port. Connected inputs must
+    /// overlap the sum of their producers' ranges, not each producer separately.
+    /// This checks structural compatibility, not whether processes will fulfill
+    /// their declared minimums. Runtime receivers check minimums at termination.
     ///
     /// # Errors
     ///
     /// Returns [`SystemValidationError`] for invalid IDs, duplicate block port
     /// ownership, unregistered endpoints or exports, output fan-out, or
     /// conflicting message types. No runtime or channels are created.
+    /// Also rejects disjoint cardinalities and unrepresentable aggregate bounds.
     pub fn validate(&self) -> Result<(), SystemValidationError> {
         self.validated_ports().map(|_| ())
     }
@@ -73,6 +84,8 @@ impl SystemDefinition {
     /// Empty systems and definitions with only inputs or only outputs are supported.
     /// Starting processes from block definitions is not implemented yet;
     /// unconnected ports remain placeholders.
+    /// Prepared connections enforce the intersection of their endpoint bounds;
+    /// unconnected placeholders retain their declared bounds as well.
     ///
     /// # Errors
     ///
@@ -170,6 +183,9 @@ impl SystemDefinition {
                 if let Some(type_id) = block.0.input_type(id) {
                     ports.constrain(id.into(), type_id)?;
                 }
+                if let Some(cardinality) = block.0.input_cardinality(id) {
+                    ports.constrain_cardinality(id.into(), cardinality)?;
+                }
             }
             for id in block.outputs() {
                 ports.declare(id.into())?;
@@ -178,6 +194,9 @@ impl SystemDefinition {
                 }
                 if let Some(type_id) = block.0.output_type(id) {
                     ports.constrain(id.into(), type_id)?;
+                }
+                if let Some(cardinality) = block.0.output_cardinality(id) {
+                    ports.constrain_cardinality(id.into(), cardinality)?;
                 }
             }
         }
@@ -189,13 +208,53 @@ impl SystemDefinition {
             ports.constrain(id.into(), type_id)?;
         }
 
+        for (&port, constraints) in &self.cardinalities {
+            ports.constrain_cardinality(port, Cardinality::UNLIMITED)?;
+            for &constraint in constraints {
+                ports.constrain_cardinality(port, constraint)?;
+            }
+        }
         let mut connected_outputs = BTreeSet::new();
+        let mut producer_ranges = BTreeMap::<InputPortId, Vec<Cardinality>>::new();
         for (&(output, input), &type_id) in &self.connections {
             ports.constrain(output.into(), type_id)?;
             ports.constrain(input.into(), type_id)?;
             if !connected_outputs.insert(output) {
                 return Err(SystemValidationError::AlreadyConnectedOutput(output));
             }
+            producer_ranges
+                .entry(input)
+                .or_default()
+                .push(ports.cardinality(output.into()));
+        }
+        for (input, ranges) in producer_ranges {
+            let minimum = ranges
+                .iter()
+                .try_fold(0usize, |sum, range| sum.checked_add(range.min()))
+                .ok_or(SystemValidationError::CardinalityOverflow(input))?;
+            // Inspect unbounded producers before summing finite maxima so the
+            // result does not depend on producer-ID order near usize::MAX.
+            let maximum = if ranges.iter().any(|range| range.max().is_none()) {
+                None
+            } else {
+                Some(
+                    ranges
+                        .iter()
+                        .try_fold(0usize, |sum, range| sum.checked_add(range.max()?))
+                        .ok_or(SystemValidationError::CardinalityOverflow(input))?,
+                )
+            };
+            let producers =
+                Cardinality::new(minimum, maximum).expect("sums of valid ranges are ordered");
+            let consumer = ports.cardinality(input.into());
+            let effective = producers.intersection(consumer).ok_or(
+                SystemValidationError::IncompatibleCardinality {
+                    port: input.into(),
+                    first: producers,
+                    second: consumer,
+                },
+            )?;
+            ports.connection_cardinalities.insert(input, effective);
         }
         Ok(ports)
     }
@@ -211,9 +270,40 @@ fn port_range(mut ids: impl Iterator<Item = isize>) -> Option<RangeInclusive<isi
 pub(crate) struct ValidatedPorts {
     pub(crate) inputs: BTreeMap<InputPortId, Option<TypeId>>,
     pub(crate) outputs: BTreeMap<OutputPortId, Option<TypeId>>,
+    pub(crate) cardinalities: BTreeMap<PortId, Cardinality>,
+    pub(crate) connection_cardinalities: BTreeMap<InputPortId, Cardinality>,
 }
 
 impl ValidatedPorts {
+    pub(crate) fn cardinality(&self, port: PortId) -> Cardinality {
+        self.cardinalities.get(&port).copied().unwrap_or_default()
+    }
+
+    fn constrain_cardinality(
+        &mut self,
+        port: PortId,
+        constraint: Cardinality,
+    ) -> Result<(), SystemValidationError> {
+        Self::check_id(port)?;
+        let declared = match port {
+            PortId::Input(id) => self.inputs.contains_key(&id),
+            PortId::Output(id) => self.outputs.contains_key(&id),
+        };
+        if !declared {
+            return Err(SystemValidationError::UnregisteredPort(port));
+        }
+        let first = self.cardinality(port);
+        let effective = first.intersection(constraint).ok_or(
+            SystemValidationError::IncompatibleCardinality {
+                port,
+                first,
+                second: constraint,
+            },
+        )?;
+        self.cardinalities.insert(port, effective);
+        Ok(())
+    }
+
     fn check_id(id: PortId) -> Result<(), SystemValidationError> {
         match id {
             PortId::Input(id) if isize::from(id) < 0 => Ok(()),
@@ -259,6 +349,7 @@ impl ValidatedPorts {
 impl Debug for SystemDefinition {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SystemDefinition")
+            .field("cardinalities", &self.cardinalities)
             .field("registered_inputs", &self.registered_inputs)
             .field("registered_outputs", &self.registered_outputs)
             .field(

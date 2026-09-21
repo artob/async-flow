@@ -1,8 +1,8 @@
 // This is free and unencumbered software released into the public domain.
 
 use super::{
-    BlockDefinition, InputPortId, Inputs, OutputPortId, Outputs, PortId, PortIdSet,
-    SystemDefinition,
+    BlockDefinition, InputPortId, Inputs, OutputPortId, Outputs, PortExport, PortId, PortIdSet,
+    PortRegistration, SystemDefinition,
 };
 use alloc::rc::Rc;
 use core::{any::TypeId, fmt::Debug};
@@ -63,38 +63,50 @@ impl SystemBuilder {
     }
 
     /// Registers an input or output port with the system under construction.
-    pub fn register_port(&mut self, input: impl Into<PortId>) {
-        match input.into() {
-            PortId::Input(input) => self.register_input(input),
-            PortId::Output(output) => self.register_output(output),
+    /// Descriptor references preserve cardinality; raw IDs impose no constraint.
+    pub fn register_port(&mut self, input: impl Into<PortRegistration<PortId>>) {
+        let PortRegistration { id, cardinality } = input.into();
+        match id {
+            PortId::Input(id) => self.register_input(PortRegistration { id, cardinality }),
+            PortId::Output(id) => self.register_output(PortRegistration { id, cardinality }),
         }
     }
 
     /// Registers an input port with the system under construction.
     ///
     /// The registration is retained by the definition, including for ports
-    /// that are neither exported nor connected. Repeated registration is a no-op.
-    pub fn register_input(&mut self, input: impl Into<InputPortId>) {
-        let input = input.into();
+    /// that are neither exported nor connected. Identical registrations are a no-op;
+    /// additional cardinality declarations are retained for intersection at validation.
+    pub fn register_input(&mut self, input: impl Into<PortRegistration<InputPortId>>) {
+        let PortRegistration {
+            id: input,
+            cardinality,
+        } = input.into();
         self.registered_inputs.insert(input);
         self.system.registered_inputs.insert(input);
+        self.record_cardinality(input.into(), cardinality);
     }
 
     /// Registers an output port with the system under construction.
     ///
     /// The registration is retained by the definition, including for ports
-    /// that are neither exported nor connected. Repeated registration is a no-op.
-    pub fn register_output(&mut self, output: impl Into<OutputPortId>) {
-        let output = output.into();
+    /// that are neither exported nor connected. Identical registrations are a no-op;
+    /// additional cardinality declarations are retained for intersection at validation.
+    pub fn register_output(&mut self, output: impl Into<PortRegistration<OutputPortId>>) {
+        let PortRegistration {
+            id: output,
+            cardinality,
+        } = output.into();
         self.registered_outputs.insert(output);
         self.system.registered_outputs.insert(output);
+        self.record_cardinality(output.into(), cardinality);
     }
 
     /// Exports an input or output port registered with the system under
     /// construction.
     pub fn export(
         &mut self,
-        input: impl Into<(PortId, TypeId)>,
+        input: impl Into<PortExport<PortId>>,
     ) -> Result<PortId, SystemBuildError> {
         self.export_port(input)
     }
@@ -103,12 +115,28 @@ impl SystemBuilder {
     /// construction.
     pub fn export_port(
         &mut self,
-        input: impl Into<(PortId, TypeId)>,
+        input: impl Into<PortExport<PortId>>,
     ) -> Result<PortId, SystemBuildError> {
-        let (input, type_id) = input.into();
+        let PortExport {
+            id: input,
+            type_id,
+            cardinality,
+        } = input.into();
         match input {
-            PortId::Input(input) => self.export_input((input, type_id)).map(|_| ()),
-            PortId::Output(output) => self.export_output((output, type_id)).map(|_| ()),
+            PortId::Input(id) => self
+                .export_input(PortExport {
+                    id,
+                    type_id,
+                    cardinality,
+                })
+                .map(|_| ()),
+            PortId::Output(id) => self
+                .export_output(PortExport {
+                    id,
+                    type_id,
+                    cardinality,
+                })
+                .map(|_| ()),
         }?;
         Ok(input)
     }
@@ -116,39 +144,65 @@ impl SystemBuilder {
     /// Exports an input port registered with the system under construction.
     pub fn export_input(
         &mut self,
-        input: impl Into<(InputPortId, TypeId)>,
+        input: impl Into<PortExport<InputPortId>>,
     ) -> Result<InputPortId, SystemBuildError> {
-        let (input, type_id) = input.into();
+        let PortExport {
+            id: input,
+            type_id,
+            cardinality,
+        } = input.into();
         if !self.registered_inputs.contains(input) {
             return Err(SystemBuildError::UnregisteredInput(input));
         }
         self.system.inputs.insert(input, type_id);
+        self.record_cardinality(input.into(), cardinality);
         Ok(input)
     }
 
     /// Exports an output port registered with the system under construction.
     pub fn export_output(
         &mut self,
-        output: impl Into<(OutputPortId, TypeId)>,
+        output: impl Into<PortExport<OutputPortId>>,
     ) -> Result<OutputPortId, SystemBuildError> {
-        let (output, type_id) = output.into();
+        let PortExport {
+            id: output,
+            type_id,
+            cardinality,
+        } = output.into();
         if !self.registered_outputs.contains(output) {
             return Err(SystemBuildError::UnregisteredOutput(output));
         }
         self.system.outputs.insert(output, type_id);
+        self.record_cardinality(output.into(), cardinality);
         Ok(output)
     }
 
     /// Connects an output port to an input port of the same type.
     ///
-    /// Returns a boolean indicating whether the connection was newly
-    /// inserted or already existed.
-    pub fn connect<T: 'static>(
+    /// Retains each port's cardinality, including nondefault bounds. Compatibility
+    /// is checked by definition validation after the full set of producers is known.
+    /// Returns `true` for a new connection; reconnecting an output is an error.
+    pub fn connect<
+        T: 'static,
+        const OUT_MAX: isize,
+        const OUT_MIN: isize,
+        const IN_MAX: isize,
+        const IN_MIN: isize,
+    >(
         &mut self,
-        output: &Outputs<T>,
-        input: &Inputs<T>,
+        output: &Outputs<T, OUT_MAX, OUT_MIN>,
+        input: &Inputs<T, IN_MAX, IN_MIN>,
     ) -> Result<bool, SystemBuildError> {
-        self.connect_ports(output.id(), input.id(), TypeId::of::<T>())
+        let inserted = self.connect_ports(output.id(), input.id(), TypeId::of::<T>())?;
+        self.record_cardinality(
+            output.id().into(),
+            Some(Outputs::<T, OUT_MAX, OUT_MIN>::message_cardinality()),
+        );
+        self.record_cardinality(
+            input.id().into(),
+            Some(Inputs::<T, IN_MAX, IN_MIN>::message_cardinality()),
+        );
+        Ok(inserted)
     }
 
     /// Connects an output port ID to an input port ID.
@@ -193,6 +247,15 @@ impl SystemBuilder {
     /// the definition again before allocating channels.
     pub fn build(self) -> SystemDefinition {
         self.system
+    }
+
+    fn record_cardinality(&mut self, port: PortId, cardinality: Option<crate::Cardinality>) {
+        if let Some(cardinality) = cardinality {
+            let constraints = self.system.cardinalities.entry(port).or_default();
+            if !constraints.contains(&cardinality) {
+                constraints.push(cardinality);
+            }
+        }
     }
 }
 

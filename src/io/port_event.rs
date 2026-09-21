@@ -9,6 +9,7 @@
 /// ends the connection, discards subsequent buffered events, and makes future
 /// receives return EOF. Sending that marker does not synchronously close the
 /// transport. Endpoint construction and dropping do not synthesize either event.
+/// A required message-count shortfall is reported as a receive error at termination.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]

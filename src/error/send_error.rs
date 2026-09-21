@@ -5,6 +5,12 @@ use thiserror::Error;
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
 #[error("SendError")]
 pub enum SendError {
+    /// The connection has accepted its maximum number of message payloads.
+    #[error("message cardinality limit reached: {maximum}")]
+    CardinalityExceeded {
+        /// The effective inclusive maximum.
+        maximum: usize,
+    },
     #[error("failed to send message on unconnected port")]
     Unconnected,
 

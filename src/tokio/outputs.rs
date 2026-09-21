@@ -1,16 +1,17 @@
 // This is free and unencumbered software released into the public domain.
 
 use super::UNLIMITED;
-use crate::{PortDirection, PortEvent, PortState, error::SendError};
-use alloc::{borrow::Cow, boxed::Box};
-use core::any::TypeId;
+use super::quota::Quota;
+use crate::{Cardinality, PortDirection, PortEvent, PortState, error::SendError};
+use alloc::{borrow::Cow, boxed::Box, sync::Arc};
+use core::{any::TypeId, future::poll_fn, pin::pin, task::Poll};
 use dogma::{MaybeLabeled, MaybeNamed};
 use tokio::sync::mpsc::Sender;
 
 /// Storage for a Tokio output handle.
 ///
-/// [`Outputs::state`] additionally observes receiver closure on a retained sender.
-#[derive(Clone, Default)]
+/// [`Outputs::state`] additionally observes receiver closure and shared quota exhaustion.
+#[derive(Default)]
 pub enum OutputPortState<T> {
     /// No sender has been attached.
     #[default]
@@ -21,6 +22,17 @@ pub enum OutputPortState<T> {
     Disconnected,
     /// This output handle was explicitly closed and its sender released.
     Closed,
+}
+
+impl<T> Clone for OutputPortState<T> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Unconnected => Self::Unconnected,
+            Self::Connected(tx) => Self::Connected(tx.clone()),
+            Self::Disconnected => Self::Disconnected,
+            Self::Closed => Self::Closed,
+        }
+    }
 }
 
 impl<T> core::fmt::Debug for OutputPortState<T> {
@@ -64,7 +76,7 @@ impl<T> Into<PortState> for &OutputPortState<T> {
 /// Cloning an output shares the sender; it does not copy queued messages.
 /// [`close`](Self::close) and dropping an output release only that handle. Other
 /// cloned handles and raw Tokio senders can continue sending. After the last
-/// sender is released, the input drains buffered events before reporting EOF;
+/// sender is released, the input drains buffered events and checks its minimum before EOF;
 /// previously acquired permits can delay that EOF.
 ///
 /// Input-side disconnection rejects new sends from every output handle. An
@@ -73,27 +85,94 @@ impl<T> Into<PortState> for &OutputPortState<T> {
 /// the marker does not synchronously close the transport: later or concurrent
 /// events can be enqueued successfully and then discarded after the marker.
 ///
-/// `AsRef`/`AsMut` provide raw channel access while this wrapper retains a
-/// sender; they panic otherwise. Raw reservations follow Tokio's permit rules.
-#[derive(Clone, Default)]
-pub struct Outputs<T, const N: isize = UNLIMITED> {
+/// # Cardinality
+///
+/// `N` and `MIN` declare lifetime payload bounds. Effective constraints may be
+/// narrowed during system preparation and are available through
+/// [`cardinality`](Self::cardinality). Every cloned sender shares the same quota,
+/// even for non-`Clone` payloads. Failed or cancelled pending sends spend no quota.
+/// The last allowed payload stops further sends and wakes quota/capacity waiters;
+/// the input drains accepted payloads and ends even while sender handles survive.
+/// Controls do not spend quota. Sends started after exhaustion fail; concurrent
+/// in-flight controls may still be queued and are discarded after the last payload.
+///
+/// # Raw channel access
+///
+/// Raw conversions and `AsRef`/`AsMut` exist only for the default `Outputs<T>`
+/// type. Access additionally checks effective bounds and panics if constrained,
+/// including limits installed by system preparation. This prevents raw sender
+/// cloning or replacement from bypassing or resetting a quota.
+/// For unconstrained ports, access requires a retained sender and otherwise
+/// panics. Raw reservations follow Tokio's permit rules.
+///
+/// ```compile_fail
+/// use async_flow::tokio::Channel;
+/// let output = Channel::<u8>::oneshot().tx;
+/// let _ = output.as_ref();
+/// ```
+///
+/// ```compile_fail
+/// use async_flow::{PortEvent, tokio::Outputs};
+/// let (raw, _) = tokio::sync::mpsc::channel::<PortEvent<u8>>(1);
+/// let _ = Outputs::<u8, 1>::from(raw);
+/// ```
+pub struct Outputs<T, const N: isize = UNLIMITED, const MIN: isize = 0> {
     pub(crate) state: OutputPortState<T>,
+    pub(crate) quota: Arc<Quota>,
 }
 
-impl<T: 'static, const N: isize> Outputs<T, N> {
+impl<T, const N: isize, const MIN: isize> Default for Outputs<T, N, MIN> {
+    fn default() -> Self {
+        Self::unconnected(const { Cardinality::from_limits(N, MIN) })
+    }
+}
+
+impl<T, const N: isize, const MIN: isize> Clone for Outputs<T, N, MIN> {
+    fn clone(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+            quota: self.quota.clone(),
+        }
+    }
+}
+
+impl<T: 'static, const N: isize, const MIN: isize> Outputs<T, N, MIN> {
     /// Returns the Rust type ID of message payloads sent by this output.
     pub fn type_id(&self) -> TypeId {
         TypeId::of::<T>()
     }
 }
 
-impl<T, const N: isize> core::fmt::Debug for Outputs<T, N> {
+impl<T, const N: isize, const MIN: isize> core::fmt::Debug for Outputs<T, N, MIN> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_tuple("Outputs").field(&self.state).finish()
     }
 }
 
-impl<T, const N: isize> Outputs<T, N> {
+impl<T, const N: isize, const MIN: isize> Outputs<T, N, MIN> {
+    pub(crate) fn unconnected(bounds: Cardinality) -> Self {
+        let declared = const { Cardinality::from_limits(N, MIN) };
+        assert_eq!(declared.intersection(bounds), Some(bounds));
+        Self {
+            state: OutputPortState::Unconnected,
+            quota: Quota::new(bounds),
+        }
+    }
+
+    pub(crate) fn with_sender(tx: Sender<PortEvent<T>>, quota: Arc<Quota>) -> Self {
+        let state = if tx.is_closed() {
+            OutputPortState::Disconnected
+        } else {
+            OutputPortState::Connected(tx)
+        };
+        Self { state, quota }
+    }
+
+    /// Returns effective lifetime message-count bounds, shared by cloned senders.
+    pub fn cardinality(&self) -> Cardinality {
+        self.quota.bounds
+    }
+
     /// Closes this output handle without affecting other sender handles.
     ///
     /// This is idempotent and does not enqueue a disconnect event. Buffered
@@ -113,10 +192,13 @@ impl<T, const N: isize> Outputs<T, N> {
         PortDirection::Output
     }
 
-    /// Returns this handle's state, observing receiver closure as disconnection.
+    /// Returns this handle's state, observing closure or exhausted quota as disconnection.
     ///
     /// Explicitly closed handles remain `Closed` regardless of their peers.
     pub fn state(&self) -> PortState {
+        if matches!(self.state, OutputPortState::Connected(_)) && self.quota.check().is_err() {
+            return PortState::Disconnected;
+        }
         (&self.state).into()
     }
 
@@ -156,6 +238,9 @@ impl<T, const N: isize> Outputs<T, N> {
     /// Returns [`SendError::Unconnected`] or [`SendError::Closed`] for those local
     /// states, or [`SendError::Disconnected`] when the receiver no longer accepts
     /// sends. A failed send drops its payload; the error does not retain it.
+    /// Once the shared maximum is reached, further sends return
+    /// [`SendError::CardinalityExceeded`] without waiting for buffer space.
+    /// Explicitly closed handles still return `Closed`.
     pub async fn send(&self, message: T) -> Result<(), SendError> {
         self.send_event(PortEvent::Message(message)).await
     }
@@ -166,6 +251,8 @@ impl<T, const N: isize> Outputs<T, N> {
     /// `Disconnect` terminates the entire connection when received by the input.
     /// Output clones must coordinate use of that terminal marker. Closing or
     /// dropping a sender does not synthesize control events.
+    /// No marker is needed after the final allowed payload: cardinality exhaustion
+    /// already ends the stream once that payload is received.
     ///
     /// # Errors and cancellation
     ///
@@ -173,7 +260,38 @@ impl<T, const N: isize> Outputs<T, N> {
     pub async fn send_event(&self, event: PortEvent<T>) -> Result<(), SendError> {
         use OutputPortState::*;
         match self.state {
-            Connected(ref tx) => Ok(tx.send(event).await?),
+            Connected(ref tx) => {
+                self.quota.check()?;
+                if self.quota.bounds.max().is_none() {
+                    return Ok(tx.send(event).await?);
+                }
+                // Poll quota exhaustion first without using a std-only macro.
+                // Both race futures are dropped before committing the payload.
+                let permit = {
+                    let mut exhausted = pin!(self.quota.wait_exhausted());
+                    let mut reserving = pin!(tx.reserve());
+                    poll_fn(|cx| {
+                        if let Poll::Ready(error) = exhausted.as_mut().poll(cx) {
+                            return Poll::Ready(Err(error));
+                        }
+                        reserving
+                            .as_mut()
+                            .poll(cx)
+                            .map(|result| result.map_err(SendError::from))
+                    })
+                    .await?
+                };
+                // No await after quota commitment: cancellation cannot spend a
+                // message allowance without enqueueing its payload.
+                if event.is_message() {
+                    self.quota.commit()?;
+                } else {
+                    self.quota.check()?;
+                }
+                permit.send(event);
+                self.quota.notify_if_exhausted();
+                Ok(())
+            },
             _ => Err((&self.state).into()),
         }
     }
@@ -188,8 +306,12 @@ impl<T, const N: isize> Outputs<T, N> {
     }
 }
 
-impl<T, const N: isize> AsRef<Sender<PortEvent<T>>> for Outputs<T, N> {
+impl<T> AsRef<Sender<PortEvent<T>>> for Outputs<T> {
     fn as_ref(&self) -> &Sender<PortEvent<T>> {
+        assert!(
+            self.quota.bounds.is_unconstrained(),
+            "raw access is disabled for constrained ports"
+        );
         use OutputPortState::*;
         match self.state {
             Connected(ref tx) => tx,
@@ -198,8 +320,12 @@ impl<T, const N: isize> AsRef<Sender<PortEvent<T>>> for Outputs<T, N> {
     }
 }
 
-impl<T, const N: isize> AsMut<Sender<PortEvent<T>>> for Outputs<T, N> {
+impl<T> AsMut<Sender<PortEvent<T>>> for Outputs<T> {
     fn as_mut(&mut self) -> &mut Sender<PortEvent<T>> {
+        assert!(
+            self.quota.bounds.is_unconstrained(),
+            "raw access is disabled for constrained ports"
+        );
         use OutputPortState::*;
         match self.state {
             Connected(ref mut tx) => tx,
@@ -208,40 +334,32 @@ impl<T, const N: isize> AsMut<Sender<PortEvent<T>>> for Outputs<T, N> {
     }
 }
 
-impl<T, const N: isize> From<Sender<PortEvent<T>>> for Outputs<T, N> {
+impl<T> From<Sender<PortEvent<T>>> for Outputs<T> {
     fn from(input: Sender<PortEvent<T>>) -> Self {
-        use OutputPortState::*;
-        Self {
-            state: if input.is_closed() {
-                Disconnected
-            } else {
-                Connected(input)
-            },
-        }
+        Self::with_sender(input, Quota::new(Cardinality::UNLIMITED))
     }
 }
 
-impl<T, const N: isize> From<&Sender<PortEvent<T>>> for Outputs<T, N> {
+impl<T> From<&Sender<PortEvent<T>>> for Outputs<T> {
     fn from(input: &Sender<PortEvent<T>>) -> Self {
-        use OutputPortState::*;
-        Self {
-            state: if input.is_closed() {
-                Disconnected
-            } else {
-                Connected(input.clone())
-            },
-        }
+        Self::from(input.clone())
     }
 }
 
 #[async_trait::async_trait]
-impl<T: Send + 'static, const N: isize> crate::io::OutputPort<T> for Outputs<T, N> {
+impl<T: Send + 'static, const N: isize, const MIN: isize> crate::io::OutputPort<T>
+    for Outputs<T, N, MIN>
+{
     async fn send(&self, message: T) -> Result<(), SendError> {
         self.send(message).await
     }
 }
 
-impl<T: Send, const N: isize> crate::io::Port<T> for Outputs<T, N> {
+impl<T: Send, const N: isize, const MIN: isize> crate::io::Port<T> for Outputs<T, N, MIN> {
+    fn cardinality(&self) -> Option<Cardinality> {
+        Some(self.cardinality())
+    }
+
     fn close(&mut self) {
         self.close()
     }
@@ -263,13 +381,13 @@ impl<T: Send, const N: isize> crate::io::Port<T> for Outputs<T, N> {
     }
 }
 
-impl<T, const N: isize> MaybeNamed for Outputs<T, N> {
+impl<T, const N: isize, const MIN: isize> MaybeNamed for Outputs<T, N, MIN> {
     fn name(&self) -> Option<Cow<'_, str>> {
         None
     }
 }
 
-impl<T, const N: isize> MaybeLabeled for Outputs<T, N> {
+impl<T, const N: isize, const MIN: isize> MaybeLabeled for Outputs<T, N, MIN> {
     fn label(&self) -> Option<Cow<'_, str>> {
         None
     }

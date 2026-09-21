@@ -27,6 +27,12 @@ pub use port_id_map::*;
 mod port_id_set;
 pub use port_id_set::*;
 
+mod port_registration;
+pub use port_registration::*;
+
+mod port_export;
+pub use port_export::*;
+
 mod system_definition;
 pub use system_definition::*;
 

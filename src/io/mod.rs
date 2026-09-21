@@ -2,6 +2,9 @@
 
 pub use crate::model::PortDirection;
 
+mod cardinality;
+pub use cardinality::*;
+
 mod connection;
 pub use connection::*;
 

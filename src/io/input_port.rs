@@ -7,6 +7,12 @@ use core::any::TypeId;
 /// A receiving interface for message payloads of type `T`.
 #[async_trait::async_trait]
 pub trait InputPort<T: Send + 'static>: Port<T> {
+    /// Stops new sends while retaining accepted events for graceful draining.
+    ///
+    /// Subsequent receives observe buffered events and then EOF or a cardinality
+    /// shortfall. Backend-specific terminal control events still take precedence.
+    fn disconnect(&mut self);
+
     /// Returns the Rust type ID of the message payload.
     fn type_id(&self) -> TypeId {
         TypeId::of::<T>()

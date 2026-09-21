@@ -8,6 +8,13 @@ use dogma::{MaybeLabeled, MaybeNamed};
 /// Blocks exchange messages through ports. This interface provides optional
 /// names and labels; backend implementations provide the runtime endpoints.
 pub trait Port<T: Send>: MaybeNamed + MaybeLabeled {
+    /// Returns effective lifetime message-count bounds, or `None` if unknown.
+    ///
+    /// This is independent of event-buffer capacity and is not a remaining quota.
+    fn cardinality(&self) -> Option<crate::Cardinality> {
+        None
+    }
+
     /// Closes this port without dropping it, returning immediately.
     ///
     /// If the port had an open connection, it will be disconnected.

@@ -206,17 +206,22 @@ impl TryFrom<&SystemDefinition> for System {
             .enumerate()
             .map(|(index, &id)| (id, index))
             .collect();
-        system
+        system.inputs = ports
             .inputs
-            .resize_with(ports.inputs.len(), Inputs::default);
-        system
+            .keys()
+            .map(|&id| Inputs::unconnected(ports.cardinality(id.into())))
+            .collect();
+        system.outputs = ports
             .outputs
-            .resize_with(ports.outputs.len(), Outputs::default);
+            .keys()
+            .map(|&id| Outputs::unconnected(ports.cardinality(id.into())))
+            .collect();
 
         // Membership and single-producer/single-consumer constraints were checked
         // before allocation. Index only the validated, dense layout, never raw IDs.
         for &(output, input) in definition.connections.keys() {
-            let channel = Channel::<Message>::bounded(1);
+            let channel =
+                Channel::<Message>::with_cardinality(1, ports.connection_cardinalities[&input]);
             system.outputs[system.output_indices[&output]] = channel.tx;
             system.inputs[system.input_indices[&input]] = channel.rx;
         }
@@ -226,12 +231,92 @@ impl TryFrom<&SystemDefinition> for System {
 
 #[cfg(test)]
 mod preparation_tests {
+    extern crate std;
     use super::*;
     use crate::{
         PortEvent, PortState,
         model::{SystemBuilder, SystemValidationError},
     };
     use core::time::Duration;
+
+    fn constrained_graph() -> SystemDefinition {
+        let input = crate::model::Inputs::<Message, 3, 2>::default();
+        let output = crate::model::Outputs::<Message, 5, 1>::default();
+        let mut builder = SystemBuilder::new();
+        builder.register_input(&input);
+        builder.register_output(&output);
+        builder.connect(&output, &input).unwrap();
+        builder.build()
+    }
+
+    #[test]
+    fn negotiated_limits_guard_raw_access_even_on_erased_default_types() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        let mut system = constrained_graph().prepare().unwrap();
+        assert_eq!(
+            system.inputs[0].cardinality(),
+            crate::Cardinality::from_limits(3, 2)
+        );
+        assert_eq!(
+            system.outputs[0].cardinality(),
+            crate::Cardinality::from_limits(3, 2)
+        );
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                let _ = system.inputs[0].as_ref();
+            }))
+            .is_err()
+        );
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                let _ = system.inputs[0].as_mut();
+            }))
+            .is_err()
+        );
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                let _ = system.outputs[0].as_ref();
+            }))
+            .is_err()
+        );
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                let _ = system.outputs[0].as_mut();
+            }))
+            .is_err()
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn preparation_installs_effective_bounds_and_revalidates_cardinality_edits() {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let mut graph = constrained_graph();
+            let mut system = graph.prepare().unwrap();
+            for _ in 0..3 {
+                system.outputs[0].send(Message::default()).await.unwrap();
+                assert!(system.inputs[0].recv().await.unwrap().is_some());
+            }
+            assert_eq!(
+                system.outputs[0].send(Message::default()).await,
+                Err(crate::SendError::CardinalityExceeded { maximum: 3 })
+            );
+            assert!(system.inputs[0].recv().await.unwrap().is_none());
+            let input_id = *graph.registered_inputs.first().unwrap();
+            graph
+                .cardinalities
+                .entry(input_id.into())
+                .or_default()
+                .push(crate::Cardinality::from_limits(1, 0));
+            assert!(matches!(
+                graph.prepare(),
+                Err(SystemPrepareError::InvalidDefinition(
+                    SystemValidationError::IncompatibleCardinality { .. }
+                ))
+            ));
+        })
+        .await
+        .expect("prepared cardinality must terminate");
+    }
 
     fn graph() -> SystemDefinition {
         let mut builder = SystemBuilder::new();
