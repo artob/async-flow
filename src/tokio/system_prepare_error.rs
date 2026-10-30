@@ -43,4 +43,13 @@ pub enum SystemPrepareError {
     /// A producer's projected limits could not be represented.
     #[error("unrepresentable fan-in cardinality")]
     FanInCardinalityOverflow,
+    /// A buffer capacity exceeds what a Tokio channel supports
+    /// ([`tokio::sync::Semaphore::MAX_PERMITS`]).
+    #[error("capacity {capacity} too large for port {port}")]
+    CapacityTooLarge {
+        /// The port whose queue was sized.
+        port: PortId,
+        /// The requested capacity.
+        capacity: usize,
+    },
 }

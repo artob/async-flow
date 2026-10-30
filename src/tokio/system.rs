@@ -268,6 +268,21 @@ impl TryFrom<&SystemDefinition> for System {
                 })
                 .ok_or(SystemPrepareError::MissingChannelFactory(type_id))
         };
+        for (&port, &capacity) in &definition.capacities {
+            if capacity.get() > tokio::sync::Semaphore::MAX_PERMITS {
+                return Err(SystemPrepareError::CapacityTooLarge {
+                    port,
+                    capacity: capacity.get(),
+                });
+            }
+        }
+        // The queue a port sends into holds this many events.
+        let capacity = |port: PortId| {
+            definition
+                .capacities
+                .get(&port)
+                .map_or(1, |capacity| capacity.get())
+        };
         let mut connections = BTreeMap::<InputPortId, Vec<OutputPortId>>::new();
         for (&(output, input), &type_id) in &definition.connections {
             if definition.inputs.contains(input) {
@@ -304,7 +319,7 @@ impl TryFrom<&SystemDefinition> for System {
             let constructor = factory(type_id)?;
             let bounds = ports.connection_cardinalities[&input];
             if outputs.len() == 1 {
-                let (output, receiver) = constructor.single(1, bounds);
+                let (output, receiver) = constructor.single(capacity(outputs[0].into()), bounds);
                 system
                     .ports
                     .outputs
@@ -320,9 +335,9 @@ impl TryFrom<&SystemDefinition> for System {
             } else {
                 let sources: Vec<_> = outputs
                     .into_iter()
-                    .map(|id| (id, ports.cardinality(id.into())))
+                    .map(|id| (id, ports.cardinality(id.into()), capacity(id.into())))
                     .collect();
-                let group = constructor.fan_in(1, bounds, &sources)?;
+                let group = constructor.fan_in(bounds, &sources)?;
                 system
                     .ports
                     .inputs
@@ -341,7 +356,7 @@ impl TryFrom<&SystemDefinition> for System {
         }
         for (&id, &type_id) in definition.inputs.iter() {
             let bounds = ports.cardinality(id.into());
-            let (sender, input) = factory(type_id)?.single(1, bounds);
+            let (sender, input) = factory(type_id)?.single(capacity(id.into()), bounds);
             system
                 .ports
                 .inputs
@@ -354,7 +369,7 @@ impl TryFrom<&SystemDefinition> for System {
         }
         for (&id, &type_id) in definition.outputs.iter() {
             let bounds = ports.cardinality(id.into());
-            let (output, receiver) = factory(type_id)?.single(1, bounds);
+            let (output, receiver) = factory(type_id)?.single(capacity(id.into()), bounds);
             system
                 .ports
                 .outputs

@@ -105,6 +105,7 @@ impl<T: Send + 'static, const MAX: isize, const MIN: isize> From<&Outputs<T, MAX
             id: port.id(),
             type_id: port.type_id(),
             cardinality: Some(Outputs::<T, MAX, MIN>::message_cardinality()),
+            capacity: None,
             #[cfg(feature = "tokio")]
             channel_factory: Some(crate::tokio::ChannelFactory::of::<T>()),
         }
@@ -119,6 +120,7 @@ impl<T: Send + 'static, const MAX: isize, const MIN: isize> From<&Outputs<T, MAX
             id: port.id().into(),
             type_id: port.type_id(),
             cardinality: Some(Outputs::<T, MAX, MIN>::message_cardinality()),
+            capacity: None,
             #[cfg(feature = "tokio")]
             channel_factory: Some(crate::tokio::ChannelFactory::of::<T>()),
         }

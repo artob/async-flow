@@ -11,7 +11,7 @@ use alloc::{
     rc::Rc,
     vec::Vec,
 };
-use core::{any::TypeId, fmt::Debug, ops::RangeInclusive};
+use core::{any::TypeId, fmt::Debug, num::NonZeroUsize, ops::RangeInclusive};
 
 /// The structural definition of a system of connected blocks.
 ///
@@ -45,6 +45,18 @@ pub struct SystemDefinition {
     /// Multiple declarations on a port are intersected with block metadata.
     /// Missing declarations impose no constraint. Entries must refer to declared ports.
     pub cardinalities: BTreeMap<PortId, Vec<Cardinality>>,
+    /// Buffer capacities, in events (payloads and control events), of the
+    /// queues messages wait in, by the port that sends into the queue.
+    ///
+    /// An output's entry sizes its connection's queue, or its boundary queue
+    /// if exported; with fan-in, each producer has its own queue, sized by its
+    /// own entry. An exported input's entry sizes the queue its external
+    /// sender fills. Missing entries mean capacity one. A larger capacity lets
+    /// a sender run ahead of its receiver; message counts are still bounded by
+    /// cardinality. Entries must refer to declared ports, and an input entry
+    /// to an exported input (a connected input's queues belong to its
+    /// producers).
+    pub capacities: BTreeMap<PortId, NonZeroUsize>,
     /// Checked Tokio constructors captured from typed connections and exports.
     ///
     /// Raw metadata edits can use `SystemBuilder::register_message_type` or
@@ -79,7 +91,8 @@ impl SystemDefinition {
     /// Returns [`SystemValidationError`] for invalid IDs, duplicate block port
     /// ownership, unregistered endpoints or exports, output fan-out, or
     /// conflicting message types. No runtime or channels are created.
-    /// Also rejects disjoint cardinalities and unrepresentable aggregate bounds.
+    /// Also rejects disjoint cardinalities and unrepresentable aggregate bounds,
+    /// and capacities on undeclared ports or on inputs that aren't exported.
     pub fn validate(&self) -> Result<(), SystemValidationError> {
         self.validated_ports().map(|_| ())
     }
@@ -108,7 +121,9 @@ impl SystemDefinition {
     /// All validation and binding completes before any future is polled.
     /// On failure, already-created futures and endpoints are dropped.
     ///
-    /// Fan-in uses one capacity-one queue per producer and fair input-side polling.
+    /// Each connection and boundary queue holds [`capacities`](Self::capacities)
+    /// events of its sending port, one by default. Fan-in uses one queue per
+    /// producer, sized by that producer, and fair input-side polling.
     /// Disconnect markers terminate only their source. Input cardinality constrains
     /// the aggregate; producer minimums reserve slots within a finite shared budget.
     ///
@@ -257,6 +272,14 @@ impl SystemDefinition {
                 ports.constrain_cardinality(port, constraint)?;
             }
         }
+        for &port in self.capacities.keys() {
+            ports.check_declared(port)?;
+            if let PortId::Input(id) = port
+                && !self.inputs.contains(id)
+            {
+                return Err(SystemValidationError::UnexportedInputCapacity(id));
+            }
+        }
         let mut connected_outputs = BTreeSet::new();
         let mut producer_ranges = BTreeMap::<InputPortId, Vec<Cardinality>>::new();
         for (&(output, input), &type_id) in &self.connections {
@@ -330,11 +353,8 @@ impl ValidatedPorts {
         self.cardinalities.get(&port).copied().unwrap_or_default()
     }
 
-    fn constrain_cardinality(
-        &mut self,
-        port: PortId,
-        constraint: Cardinality,
-    ) -> Result<(), SystemValidationError> {
+    /// Checks that `port` is a valid, declared port.
+    fn check_declared(&self, port: PortId) -> Result<(), SystemValidationError> {
         Self::check_id(port)?;
         let declared = match port {
             PortId::Input(id) => self.inputs.contains_key(&id),
@@ -343,6 +363,15 @@ impl ValidatedPorts {
         if !declared {
             return Err(SystemValidationError::UnregisteredPort(port));
         }
+        Ok(())
+    }
+
+    fn constrain_cardinality(
+        &mut self,
+        port: PortId,
+        constraint: Cardinality,
+    ) -> Result<(), SystemValidationError> {
+        self.check_declared(port)?;
         let first = self.cardinality(port);
         let effective = first.intersection(constraint).ok_or(
             SystemValidationError::IncompatibleCardinality {
@@ -401,6 +430,7 @@ impl Debug for SystemDefinition {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SystemDefinition")
             .field("cardinalities", &self.cardinalities)
+            .field("capacities", &self.capacities)
             .field("registered_inputs", &self.registered_inputs)
             .field("registered_outputs", &self.registered_outputs)
             .field(

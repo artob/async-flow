@@ -5,7 +5,7 @@ use super::{
     PortRegistration, SystemDefinition,
 };
 use alloc::rc::Rc;
-use core::{any::TypeId, fmt::Debug};
+use core::{any::TypeId, fmt::Debug, num::NonZeroUsize};
 use thiserror::Error;
 
 #[derive(Clone, Debug, Error)]
@@ -152,6 +152,7 @@ impl SystemBuilder {
             id: input,
             type_id,
             cardinality,
+            capacity,
             #[cfg(feature = "tokio")]
             channel_factory,
         } = input.into();
@@ -161,6 +162,7 @@ impl SystemBuilder {
                     id,
                     type_id,
                     cardinality,
+                    capacity,
                     #[cfg(feature = "tokio")]
                     channel_factory,
                 })
@@ -170,6 +172,7 @@ impl SystemBuilder {
                     id,
                     type_id,
                     cardinality,
+                    capacity,
                     #[cfg(feature = "tokio")]
                     channel_factory,
                 })
@@ -187,6 +190,7 @@ impl SystemBuilder {
             id: input,
             type_id,
             cardinality,
+            capacity,
             #[cfg(feature = "tokio")]
             channel_factory,
         } = input.into();
@@ -199,6 +203,9 @@ impl SystemBuilder {
             self.system.channel_factories.insert(type_id, factory);
         }
         self.record_cardinality(input.into(), cardinality);
+        if let Some(capacity) = capacity {
+            self.system.capacities.insert(input.into(), capacity);
+        }
         Ok(input)
     }
 
@@ -211,6 +218,7 @@ impl SystemBuilder {
             id: output,
             type_id,
             cardinality,
+            capacity,
             #[cfg(feature = "tokio")]
             channel_factory,
         } = output.into();
@@ -223,6 +231,9 @@ impl SystemBuilder {
             self.system.channel_factories.insert(type_id, factory);
         }
         self.record_cardinality(output.into(), cardinality);
+        if let Some(capacity) = capacity {
+            self.system.capacities.insert(output.into(), capacity);
+        }
         Ok(output)
     }
 
@@ -253,6 +264,46 @@ impl SystemBuilder {
             input.id().into(),
             Some(Inputs::<T, IN_MAX, IN_MIN>::message_cardinality()),
         );
+        Ok(inserted)
+    }
+
+    /// Connects an output port to an input port of the same type, through a
+    /// queue holding up to `capacity` events (payloads and control events)
+    /// instead of one.
+    ///
+    /// A larger queue lets the producer run ahead of the consumer; message
+    /// counts are still bounded by cardinality, not by capacity. With fan-in,
+    /// each producer has its own queue, sized by its own connection. See
+    /// [`SystemDefinition::capacities`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use async_flow::model::{Inputs, Outputs, SystemBuilder};
+    /// use core::num::NonZeroUsize;
+    ///
+    /// let mut builder = SystemBuilder::new();
+    /// let (output, input) = (Outputs::<u8>::default(), Inputs::<u8>::default());
+    /// builder.register_output(&output);
+    /// builder.register_input(&input);
+    /// let capacity = NonZeroUsize::new(16).unwrap();
+    /// builder.connect_with_capacity(&output, &input, capacity).unwrap();
+    /// assert_eq!(builder.build().capacities[&output.id().into()], capacity);
+    /// ```
+    pub fn connect_with_capacity<
+        T: Send + 'static,
+        const OUT_MAX: isize,
+        const OUT_MIN: isize,
+        const IN_MAX: isize,
+        const IN_MIN: isize,
+    >(
+        &mut self,
+        output: &Outputs<T, OUT_MAX, OUT_MIN>,
+        input: &Inputs<T, IN_MAX, IN_MIN>,
+        capacity: NonZeroUsize,
+    ) -> Result<bool, SystemBuildError> {
+        let inserted = self.connect(output, input)?;
+        self.system.capacities.insert(output.id().into(), capacity);
         Ok(inserted)
     }
 

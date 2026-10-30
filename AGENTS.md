@@ -43,6 +43,10 @@ verify dependency compatibility when changing features or dependencies.
   intersect; sender clones share quotas. Fan-in reserves producer minimums within
   the aggregate budget. Raw access requires unconstrained, non-grouped ports.
   `UNLIMITED` is not an unbounded-buffer constructor.
+- Capacity (queue size, in events, controls included) is not cardinality.
+  Prepared capacities are per sending port (`SystemDefinition::capacities`,
+  default one): an output's connection or export, or an exported input's
+  external sender; each fan-in producer has its own queue.
 - Tokio input `disconnect()` drains accepted events; `close()` discards them.
   `Connect` is informational; receiving `Disconnect` terminates the connection
   and discards trailing events. Fan-in consumes source-local disconnect markers;
@@ -80,7 +84,7 @@ and `--all-features`. Distinguish existing failures from regressions.
 ## Known gaps — recheck when touched; update when fixed
 - Flume-enabled builds, including `--all-features`, fail in unfinished Flume
   implementations. CI covers non-Flume feature sets. Clippy emits warnings.
-- Blocking send/recv methods are `todo!()`. Prepared connections use capacity-one
-  queues (one per producer in fan-in); buffer configuration is not yet exposed.
+- Blocking send/recv methods are `todo!()`. The stdio helpers (`read_stdin`,
+  `write_stdout`) still use fixed capacity-one queues.
 - `tests/` covers graph validation, port lifecycle/backpressure/cancellation, and
   system execution/shutdown; `benches/` is a placeholder.

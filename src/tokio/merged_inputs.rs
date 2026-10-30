@@ -186,11 +186,14 @@ fn projected_ranges(
 }
 
 pub(crate) fn connect<T: Send + 'static>(
-    buffer: usize,
     total: Cardinality,
-    sources: &[(OutputPortId, Cardinality)],
+    sources: &[(OutputPortId, Cardinality, usize)],
 ) -> Result<FanInConnection, SystemPrepareError> {
-    let ranges = projected_ranges(total, sources)?;
+    let limits: Vec<_> = sources
+        .iter()
+        .map(|&(id, bounds, _)| (id, bounds))
+        .collect();
+    let ranges = projected_ranges(total, &limits)?;
     let minimums = ranges
         .iter()
         .try_fold(0usize, |sum, range| sum.checked_add(range.min()))
@@ -199,17 +202,17 @@ pub(crate) fn connect<T: Send + 'static>(
         GroupBudget::new(total, minimums).ok_or(SystemPrepareError::FanInCardinalityOverflow)?;
     let mut inputs = Vec::with_capacity(sources.len());
     let mut outputs = Vec::with_capacity(sources.len());
-    for ((id, _), bounds) in sources.iter().zip(ranges) {
+    for (&(id, _, buffer), bounds) in sources.iter().zip(ranges) {
         let quota = Quota::grouped(bounds, Arc::clone(&group));
         let (tx, rx) = mpsc::channel(buffer);
         let output = Outputs::<T>::with_sender(tx, Arc::clone(&quota));
         let input = Inputs::<T>::with_receiver(rx, quota);
         outputs.push((
-            *id,
+            id,
             bounds,
             Box::new(output) as super::runtime_ports::ErasedPort,
         ));
-        inputs.push((*id, input));
+        inputs.push((id, input));
     }
     let input =
         Inputs::<T>::with_merged(MergedInputs::new(inputs, Arc::clone(&group.changed)), total);
@@ -232,8 +235,8 @@ mod tests {
         a: Cardinality,
         b: Cardinality,
     ) -> (Outputs<u8>, Outputs<u8>, Inputs<u8>) {
-        let group =
-            connect::<u8>(buffer, total, &[(OutputPortId(1), a), (OutputPortId(2), b)]).unwrap();
+        let sources = [(OutputPortId(1), a, buffer), (OutputPortId(2), b, buffer)];
+        let group = connect::<u8>(total, &sources).unwrap();
         let mut outputs = group.outputs.into_iter();
         let a = *outputs.next().unwrap().2.downcast::<Outputs<u8>>().unwrap();
         let b = *outputs.next().unwrap().2.downcast::<Outputs<u8>>().unwrap();

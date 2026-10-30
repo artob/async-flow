@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `SystemDefinition` adds a `capacities` field and `PortExport` a `capacity`
+  field; struct literals must include them or use `..Default::default()`
+  (for `PortExport`, `PortExport::new`). `SystemValidationError` adds
+  `UnexportedInputCapacity` and `SystemPrepareError` adds `CapacityTooLarge`.
 - Definition preparation requires executable registration for blocks, creates
   fresh unpolled process futures, and starts them in `System::execute()`. Explicit
   `System::spawn()` still starts tasks immediately. Untaken boundary endpoints
@@ -50,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Configurable buffer capacities for prepared connections and boundary queues,
+  by sending port (`SystemDefinition::capacities`, default one), set with
+  `SystemBuilder::connect_with_capacity` or `PortExport::with_capacity`. Each
+  fan-in producer's queue takes its own capacity. Validation rejects entries on
+  undeclared ports or unexported inputs; preparation rejects capacities beyond
+  Tokio's limit instead of panicking.
 - Tokio `ExecutableBlock`, `ProcessFuture`, `BlockPorts`, checked channel factories,
   and typed external boundary accessors. Process factories remain attached to
   block handles across definition clones/reordering. Prepared systems are `Send`.

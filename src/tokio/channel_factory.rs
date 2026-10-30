@@ -10,10 +10,11 @@ pub(crate) struct FanInConnection {
     pub(crate) outputs: Vec<(OutputPortId, Cardinality, ErasedPort)>,
 }
 
+/// Builds a fan-in connection: the input's bounds, and each producer's ID,
+/// bounds and queue capacity.
 type FanInFactory = fn(
-    usize,
     Cardinality,
-    &[(OutputPortId, Cardinality)],
+    &[(OutputPortId, Cardinality, usize)],
 ) -> Result<FanInConnection, SystemPrepareError>;
 
 /// A checked type-erased constructor for Tokio connections carrying one Rust type.
@@ -54,11 +55,10 @@ impl ChannelFactory {
 
     pub(crate) fn fan_in(
         &self,
-        buffer: usize,
         bounds: Cardinality,
-        sources: &[(OutputPortId, Cardinality)],
+        sources: &[(OutputPortId, Cardinality, usize)],
     ) -> Result<FanInConnection, SystemPrepareError> {
-        (self.fan_in)(buffer, bounds, sources)
+        (self.fan_in)(bounds, sources)
     }
 }
 

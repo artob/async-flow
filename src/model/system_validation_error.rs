@@ -34,6 +34,11 @@ pub enum SystemValidationError {
     #[error("duplicate block port ID: {0}")]
     DuplicatePort(PortId),
 
+    /// A buffer capacity is set on an input that isn't exported: a connected
+    /// input's queues belong to its producers, so set it on their outputs.
+    #[error("capacity on unexported input port ID: {0}")]
+    UnexportedInputCapacity(InputPortId),
+
     /// An output is connected to more than one input.
     #[error("already connected output port ID: {0}")]
     AlreadyConnectedOutput(OutputPortId),
