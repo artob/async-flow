@@ -7,7 +7,7 @@ authors = ["Arto Bendiken"]
 edition = "2024"
 rust-version = "1.97"
 description = "Async abstractions for flow-based programming (FBP)."
-#documentation = "https://docs.rs/async-flow"
+documentation = "https://docs.rs/async-flow"
 readme = true
 homepage = "https://async-flow.rs"
 repository = "https://github.com/artob/async-flow"
@@ -15,6 +15,11 @@ license = "Unlicense"
 keywords = ["fbp", "flow", "dataflow", "async"]
 categories = ["asynchronous", "concurrency", "rust-patterns", "no-std"]
 publish = true
+
+[package.metadata.docs.rs]
+# The Flume backend is unfinished and does not build, so `all-features` is avoided.
+features = ["all", "std", "serde", "sqlx"]
+rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["all", "std"]

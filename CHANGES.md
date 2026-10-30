@@ -59,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mismatches, unclaimed connected ports, and internally connected exports.
   `FanInBudgetExhausted` and `ProducerCardinalityUnderflow` report fan-in failures.
 - The `defined_system` example demonstrates typed executable factories and fan-in.
+- docs.rs builds document the Tokio backend and the `serde`/`sqlx` integrations,
+  and badge feature-gated items with their required features.
 
 - Backend-neutral graph validation for port IDs, block ownership, endpoint
   registration, output connection uniqueness, and message-type consistency.
