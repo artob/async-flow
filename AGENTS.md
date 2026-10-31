@@ -51,6 +51,8 @@ verify dependency compatibility when changing features or dependencies.
   `Connect` is informational; receiving `Disconnect` terminates the connection
   and discards trailing events. Fan-in consumes source-local disconnect markers;
   other producers continue. Output `close()` affects only that handle.
+  Output `closed()` waits until `state()` leaves `Connected` (input gone,
+  marker received, or quota/budget exhausted); keep the two in agreement.
 - `register_executable` attaches factories to block handles. `prepare()` needs no
   runtime and returns unpolled `Send` futures; `execute()` starts them and joins.
   Explicit `spawn()` starts immediately. Exports must be internally unconnected;

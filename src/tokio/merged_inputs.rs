@@ -301,6 +301,30 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn closed_wakes_a_producer_when_the_shared_budget_runs_out() {
+        bounded(async {
+            let (a, b, _input) = merge(
+                4,
+                Cardinality::from_limits(2, 0),
+                Cardinality::UNLIMITED,
+                Cardinality::UNLIMITED,
+            );
+            let mut waiting = core::pin::pin!(a.closed());
+            poll_fn(|cx| {
+                assert!(waiting.as_mut().poll(cx).is_pending());
+                Poll::Ready(())
+            })
+            .await;
+            // B spends the whole budget; A can't send any more.
+            b.send(1).await.unwrap();
+            b.send(2).await.unwrap();
+            waiting.await;
+            assert!(a.is_disconnected());
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn exhausted_spare_budget_retires_live_sources_without_waiting_for_drops() {
         bounded(async {
             let (a, b, mut input) = merge(

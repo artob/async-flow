@@ -54,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tokio `Outputs::closed()` waits, without sending, until the handle can no
+  longer send: its input dropped, closed or ended by a received disconnect
+  marker, or its quota (or a fan-in producer's share of the budget) exhausted.
+  It resolves at once for unconnected, disconnected or closed handles, and is
+  cancel-safe, so a block waiting on something else (a timer) can stop when
+  nobody listens.
 - Configurable buffer capacities for prepared connections and boundary queues,
   by sending port (`SystemDefinition::capacities`, default one), set with
   `SystemBuilder::connect_with_capacity` or `PortExport::with_capacity`. Each

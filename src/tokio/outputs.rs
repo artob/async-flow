@@ -304,6 +304,37 @@ impl<T, const N: isize, const MIN: isize> Outputs<T, N, MIN> {
         }
     }
 
+    /// Waits until this handle can no longer send, without sending.
+    ///
+    /// Resolves once [`state`](Self::state) stops reporting
+    /// [`PortState::Connected`]: the input has been dropped or closed, or has
+    /// received a disconnect marker, or the shared quota (or, for a fan-in
+    /// producer, its share of the input's budget) is exhausted. Resolves at
+    /// once for an unconnected, disconnected or closed handle. A block that
+    /// waits on something other than its inputs, such as a timer, can race its
+    /// wait against this to stop when nobody listens any more.
+    ///
+    /// # Cancellation
+    ///
+    /// Cancel-safe: it neither sends nor reserves anything.
+    pub async fn closed(&self) {
+        let OutputPortState::Connected(ref tx) = self.state else {
+            return;
+        };
+        if self.quota.check().is_err() {
+            return;
+        }
+        let mut exhausted = pin!(self.quota.wait_exhausted());
+        let mut gone = pin!(tx.closed());
+        poll_fn(
+            |cx| match (exhausted.as_mut().poll(cx), gone.as_mut().poll(cx)) {
+                (Poll::Pending, Poll::Pending) => Poll::Pending,
+                _ => Poll::Ready(()),
+            },
+        )
+        .await
+    }
+
     /// A placeholder for blocking message transmission.
     ///
     /// # Panics

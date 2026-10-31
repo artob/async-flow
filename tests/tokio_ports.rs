@@ -557,3 +557,67 @@ async fn cloned_producers_share_a_queue_without_loss_or_reordering_each_producer
     })
     .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn closed_waits_only_while_the_output_can_still_send() {
+    bounded(async {
+        // Unconnected and closed handles can't send: no wait.
+        Outputs::<u8>::default().closed().await;
+        let (mut tx, _rx) = Channel::<u8>::bounded(1).into_inner();
+        tx.close();
+        tx.closed().await;
+
+        // A live input keeps it waiting, even with a full queue; a cancelled
+        // wait changes nothing.
+        let (tx, mut rx) = Channel::<u8>::bounded(1).into_inner();
+        tx.send(1).await.unwrap();
+        assert_pending(core::pin::pin!(tx.closed())).await;
+        assert_eq!(tx.state(), PortState::Connected);
+        assert_eq!(rx.recv().await.unwrap(), Some(1));
+
+        // Then the input goes, each way: a pending wait wakes.
+        let end_by_drop = |rx: Inputs<u8>| drop(rx);
+        let end_by_close = |mut rx: Inputs<u8>| rx.close();
+        for end in [end_by_drop, end_by_close] {
+            let (tx, rx) = Channel::<u8>::bounded(1).into_inner();
+            let mut waiting = core::pin::pin!(tx.closed());
+            assert_pending(waiting.as_mut()).await;
+            end(rx);
+            waiting.await;
+            assert_eq!(tx.state(), PortState::Disconnected);
+        }
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn closed_wakes_when_a_disconnect_marker_is_received() {
+    bounded(async {
+        let (tx, mut rx) = Channel::<u8>::bounded(2).into_inner();
+        tx.send_event(PortEvent::Disconnect).await.unwrap();
+        // Queued, but not yet received.
+        let mut waiting = core::pin::pin!(tx.closed());
+        assert_pending(waiting.as_mut()).await;
+        assert_eq!(rx.recv_event().await.unwrap(), Some(PortEvent::Disconnect));
+        waiting.await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn closed_wakes_when_the_shared_quota_runs_out() {
+    bounded(async {
+        let (tx, _rx) = Channel::<u8, 2>::bounded(4).into_inner();
+        let clone = tx.clone();
+        tx.send(1).await.unwrap();
+        let mut waiting = core::pin::pin!(tx.closed());
+        assert_pending(waiting.as_mut()).await;
+        // A clone sends the last allowed message, with the input still there.
+        clone.send(2).await.unwrap();
+        waiting.await;
+        assert_eq!(tx.state(), PortState::Disconnected);
+        // Already exhausted: no wait.
+        clone.closed().await;
+    })
+    .await;
+}
